@@ -60,3 +60,27 @@ button:
     on_press:
       - voice_assistant.start:
   - platform: template
+    name: "Restart Wake Word"
+    id: restart_wake_word
+    on_press:
+      - micro_wake_word.start:
+
+# Two separate I2S buses so audio streaming doesn't lock up the watchdog
+i2s_audio:
+  # INMP441 Mic Clock Bus
+  - id: i2s_in
+    i2s_lrclk_pin: GPIO15
+    i2s_bclk_pin: GPIO16
+  # MAX98357A Speaker Clock Bus
+  - id: i2s_out
+    i2s_lrclk_pin: GPIO6
+    i2s_bclk_pin: GPIO5
+
+# INMP441 MEMS microphone on breadboard
+microphone:
+  - platform: i2s_audio
+    id: board_mic
+    i2s_audio_id: i2s_in
+    adc_type: external
+    i2s_din_pin: GPIO17
+    pdm: false
