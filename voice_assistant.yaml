@@ -96,7 +96,49 @@ speaker:
     buffer_duration: 300ms
     timeout: 1000ms
 
+# 8-pixel WS2812B RGB LED ring wired to GPIO 4
+light:
+  - platform: esp32_rmt_led_strip
+    channel_colors: GRB
+    pin: GPIO4
+    num_leds: 8
+    id: aura_led
+    name: "Aura LED"
+    chipset: ws2812
+    default_transition_length: 0.15s
+    effects:
+      - addressable_rainbow:
+          name: "Rainbow"
+          speed: 10
+          width: 50
+      - addressable_color_wipe:
+          name: "Thinking Wipe"
+          colors:
+            - red: 0%
+              green: 50%
+              blue: 100%
+              num_leds: 2
+            - red: 0%
+              green: 0%
+              blue: 0%
+              num_leds: 6
+          add_led_interval: 0.08s
+          reverse: false
+      - addressable_scan:
+          name: "Call Radar"
+          move_interval: 0.1s
+          scan_width: 2
+      - pulse:
+          name: "Speaking Pulse"
+          transition_length: 0.4s
+          update_interval: 0.5s
+          min_brightness: 30%
+          max_brightness: 100%
 
+# ESPHome voice assistant component
+voice_assistant:
+  id: va
+  microphone: board_mic
   speaker: board_speaker
   use_wake_word: true
   micro_wake_word: my_wake_word
