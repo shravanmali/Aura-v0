@@ -1,0 +1,15 @@
+{
+  "user_name": "User",
+  "memories": [
+    "Your home location is in City, State (PIN code 000000)."
+  ],
+  "home_location": {
+    "landmark": "Near Central Park",
+    "neighborhood": "Downtown",
+    "city": "Sample City",
+    "state": "Sample State",
+    "pincode": "000000"
+  },
+  "notes": []
+}
+
