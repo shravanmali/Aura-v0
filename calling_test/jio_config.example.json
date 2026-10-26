@@ -1,0 +1,10 @@
+{
+  "realm": "mh.wln.ims.jio.com",
+  "username": "91XXXXXXXXXX@mh.wln.ims.jio.com",
+  "userpwd": "your_sip_password",
+  "home_network_domain_name": "mh.wln.ims.jio.com",
+  "address": "Jiofiber.local.html:5068",
+  "private_user_identity": "sip:91XXXXXXXXXX@mh.wln.ims.jio.com",
+  "public_user_identity": "sip:+91XXXXXXXXXX@mh.wln.ims.jio.com"
+}
+
