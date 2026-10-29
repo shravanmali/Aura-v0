@@ -1,0 +1,34 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+*.wav
+*.rpt
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# ESPHome Build Artifacts & Credentials
+.esphome/
+secrets.yaml
+
+# Local Secrets & Personal Data
+local_secrets.py
+memory.json
+
+# Calling Test Credentials & Binaries
+calling_test/jio_config.json
+calling_test/contacts.json
+calling_test/microsip.ini
+calling_test/microsip/
+
+# Local workspace scratch & uncommitted test folders
+gemini_car/
+scratch/
+scratch_lite.html
+Order_Tracking_Sheet*
+.env
+GEMINI.md
