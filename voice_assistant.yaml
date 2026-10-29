@@ -96,3 +96,42 @@ speaker:
     buffer_duration: 300ms
     timeout: 1000ms
 
+
+  speaker: board_speaker
+  use_wake_word: true
+  micro_wake_word: my_wake_word
+  volume_multiplier: 1.0
+  conversation_timeout: 3600s
+  on_listening:
+    - light.turn_on:
+        id: aura_led
+        brightness: 90%
+        red: 0%
+        green: 75%
+        blue: 100%
+  on_end:
+    - micro_wake_word.start:
+    - light.turn_off:
+        id: aura_led
+  on_error:
+    - micro_wake_word.start:
+
+# Local on-device Alexa wake word model running on ESP32-S3
+micro_wake_word:
+  id: my_wake_word
+  stop_after_detection: false
+  models:
+    - model: alexa
+      probability_cutoff: 0.45
+      sliding_window_size: 3
+  microphone:
+    gain_factor: 2
+  on_wake_word_detected:
+    - light.turn_on:
+        id: aura_led
+        brightness: 100%
+        red: 0%
+        green: 80%
+        blue: 100%
+    - voice_assistant.start:
+        wake_word: !lambda return wake_word;
