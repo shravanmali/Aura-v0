@@ -368,3 +368,83 @@ class ESP32CallAudioBridge:
                 pass
 
     # Worker thread: reads caller audio from MicroSIP and forwards to ESP32 speaker
+    def _run_inbound_loop(self):
+        if not self.caller_loopback_dev:
+            print("[Audio Bridge] Could not find loopback device.")
+            return
+
+        try:
+            in_stream = self.pa.open(
+                format=pyaudio.paInt16,
+                channels=2,
+                rate=48000,
+                input=True,
+                input_device_index=self.caller_loopback_dev['index'],
+                frames_per_buffer=960
+            )
+
+            if self.silent_render_stream:
+                try:
+                    self.silent_render_stream.write(b'\x00' * 3840)
+                except Exception:
+                    pass
+
+            last_clock_tick = time.time()
+            last_sent_time = 0.0
+            silence_keepalive = b'\x00' * 640
+
+            while self.is_active:
+                now = time.time()
+                if now - last_clock_tick > 0.08:
+                    if self.silent_render_stream:
+                        try:
+                            self.silent_render_stream.write(b'\x00' * 3840)
+                        except Exception:
+                            pass
+                    last_clock_tick = now
+
+                data = in_stream.read(960, exception_on_overflow=False)
+                if not data or len(data) < 3840:
+                    continue
+
+                samples = np.frombuffer(data, dtype=np.int16).reshape(-1, 2)
+                mono_48k = ((samples[:, 0].astype(np.int32) + samples[:, 1].astype(np.int32)) // 2).astype(np.float32)
+
+                # Downsample 48kHz to 16kHz for ESP32
+                mono_16k = mono_48k[::3]
+
+                instant_rms = float(np.sqrt(np.mean(mono_16k ** 2)))
+                self.caller_speaker_rms = 0.70 * self.caller_speaker_rms + 0.30 * instant_rms
+
+                if instant_rms > 20.0:
+                    self.last_caller_audio_time = now
+
+                speech_active = (instant_rms > 20.0) or ((now - self.last_caller_audio_time) < 0.250)
+
+                # Send 16kHz audio to ESP32 MAX98357A speaker
+                if self.send_to_esp32_fn:
+                    if speech_active:
+                        boosted_caller = np.clip(mono_16k * 1.6, -32767.0, 32767.0)
+                        pcm_out = boosted_caller.astype(np.int16).tobytes()
+                        self.send_to_esp32_fn(pcm_out)
+                        last_sent_time = now
+                    elif (now - last_sent_time) > 2.5:
+                        self.send_to_esp32_fn(silence_keepalive)
+                        last_sent_time = now
+
+            in_stream.stop_stream()
+            in_stream.close()
+        except Exception as e:
+            print(f"[Audio Bridge] Inbound stream error: {e}")
+
+    def stop(self):
+        if not self.is_active:
+            return
+        print("[Audio Bridge] Stopping audio bridge...")
+        self.is_active = False
+        self.caller_speaker_rms = 0.0
+
+        if self.inbound_thread and self.inbound_thread.is_alive():
+            try:
+                self.inbound_thread.join(timeout=0.25)
+            except Exception:
