@@ -8798,3 +8798,389 @@ async def force_start(request):
     try:
         if button_key_cache is None:
             entities, _ = await asyncio.wait_for(client.list_entities_services(), timeout=3.0)
+            for entity in entities:
+                if hasattr(entity, 'name') and entity.name == "Force Start Mic":
+                    button_key_cache = entity.key
+                    break
+                    
+        if button_key_cache:
+            try:
+                client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+            except Exception:
+                pass
+            client.button_command(button_key_cache)
+            return web.Response(text="OK - Force Start Sent!")
+        else:
+            return web.Response(text="Button not found on ESP32", status=404)
+    except Exception as e:
+        print(f"force_start error: {e}")
+        return web.Response(text=f"Error triggering button: {e}", status=500)
+
+async def api_memory(request):
+    """Returns memory notes JSON."""
+    return web.json_response(memory_data)
+
+async def api_test_voice(request):
+    """Plays a test voice sample directly through the ESP32 speaker."""
+    test_phrase = request.query.get("text")
+    if not test_phrase and request.method == "POST":
+        try:
+            data = await request.json()
+            test_phrase = data.get("text")
+        except Exception:
+            pass
+    if not test_phrase:
+        test_phrase = "Haan Shravan, aaje badhu mast chhe! Tamara mate hu hajar chu."
+        
+    pcm, dt, voice_name = await loop.run_in_executor(None, run_tts, test_phrase)
+    if pcm and is_connected():
+        await stream_audio_to_esp32(pcm, test_phrase)
+        return web.json_response({
+            "success": True,
+            "text": test_phrase,
+            "tts_ms": round(dt),
+            "voice": voice_name,
+            "bytes": len(pcm)
+        })
+    return web.json_response({"error": "Could not play voice or ESP32 not connected"}, status=500)
+
+async def api_query(request):
+    """Executes full LLM + TTS pipeline for a text query and streams audio to ESP32."""
+    try:
+        data = await request.json()
+        query = data.get("query", "").strip()
+        if not query:
+            return web.json_response({"error": "Empty query"}, status=400)
+            
+        print(f"\n[API QUERY START]: '{query}'")
+        def _execute_query(q):
+            det_lang = detect_language(q, user_query=q)
+            rep, definitive_lang, raw_rep, t_llm = run_groq_llm(q, detected_lang=det_lang)
+            tts_pcm, t_tts, voice_used = run_tts(rep, user_query=q, raw_reply=raw_rep, forced_lang=definitive_lang)
+            return rep, definitive_lang, tts_pcm, voice_used, t_llm, t_tts
+            
+        reply, definitive_lang, tts_pcm, voice_used, t_llm, t_tts = await loop.run_in_executor(None, _execute_query, query)
+        total_ms = t_llm + t_tts
+        print(f"Groq LLM ({t_llm:.0f} ms): {reply}")
+        print(f"Voice TTS [{voice_used}] ({t_tts:.0f} ms): {len(tts_pcm) if tts_pcm else 0} bytes")
+        print(f"==> TOTAL LATENCY (LLM+TTS): {total_ms:.0f} ms\n")
+        
+        if tts_pcm and is_connected():
+            global active_streamer_task, playback_interrupt_event
+            playback_interrupt_event.clear()
+            active_streamer_task = asyncio.create_task(stream_audio_to_esp32(tts_pcm, reply))
+            try:
+                await active_streamer_task
+            except asyncio.CancelledError:
+                print("[API QUERY STREAM CANCELLED VIA INTERRUPT]")
+
+        now_ts = time.time()
+        calc_v2v = round(t_llm + t_tts)
+        st_ts = datetime.datetime.fromtimestamp(now_ts - (calc_v2v / 1000.0)).strftime("%H:%M:%S.%f")[:-3]
+        fa_ts = datetime.datetime.fromtimestamp(now_ts).strftime("%H:%M:%S.%f")[:-3]
+        try:
+            asyncio.run_coroutine_threadsafe(broadcast("stt", query), loop)
+            asyncio.run_coroutine_threadsafe(broadcast("ai", f"{reply} (First Word: {calc_v2v} ms | Total: {round(total_ms)} ms)"), loop)
+            asyncio.run_coroutine_threadsafe(broadcast("metrics", {
+                "stt_ms": 0,
+                "llm_ms": round(t_llm),
+                "tts_ms": round(t_tts),
+                "first_word_ms": calc_v2v,
+                "speech_end_ts": st_ts,
+                "first_audio_ts": fa_ts,
+                "voice": voice_used,
+                "total_ms": round(total_ms)
+            }), loop)
+        except Exception:
+            pass
+            
+        return web.json_response({
+            "query": query,
+            "reply": reply,
+            "lang": definitive_lang,
+            "voice": voice_used,
+            "llm_ms": round(t_llm),
+            "tts_ms": round(t_tts),
+            "total_ms": round(total_ms),
+            "bytes": len(tts_pcm) if tts_pcm else 0
+        })
+    except Exception as e:
+        print(f"api_query error: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+async def api_interrupt(request):
+    """Instant software barge-in trigger (halts speaker and purges queues)."""
+    global active_streamer_task, active_pipeline_task, playback_interrupt_event, active_audio_queue
+    was_speaking = (active_streamer_task and not active_streamer_task.done()) or (active_pipeline_task and not active_pipeline_task.done())
+    if was_speaking:
+        print("\n>>> [API INTERRUPT]: Halting speaker playback via API request. <<<")
+        playback_interrupt_event.set()
+        if active_audio_queue:
+            while not active_audio_queue.empty():
+                try:
+                    active_audio_queue.get_nowait()
+                except Exception:
+                    break
+        if active_streamer_task and not active_streamer_task.done():
+            active_streamer_task.cancel()
+        if active_pipeline_task and not active_pipeline_task.done():
+            active_pipeline_task.cancel()
+        try:
+            if is_connected():
+                client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_TTS_STREAM_END, None)
+                client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+        except Exception:
+            pass
+        await broadcast("status", "Interrupted! Ready for voice command.")
+        return web.json_response({"success": True, "interrupted": True})
+    return web.json_response({"success": True, "interrupted": False, "message": "Nothing was playing"})
+
+async def api_test_timer(request):
+    """Starts a 5-second test timer."""
+    asyncio.create_task(start_timer(5, "5-second test timer"))
+    return web.Response(text="5-second timer started!")
+
+async def api_get_test_mode(request):
+    """Returns current voice mode."""
+    global tts_test_mode
+    return web.json_response({"test_mode": tts_test_mode})
+
+async def api_set_test_mode(request):
+    """Sets voice mode (True = Microsoft Free Voices, False = Cartesia Sonic)."""
+    global tts_test_mode, cartesia_cooldown_until
+    try:
+        data = await request.json()
+        tts_test_mode = bool(data.get("test_mode", False))
+        if not tts_test_mode:
+            cartesia_cooldown_until = 0
+            print("[CARTESIA COOLDOWN RESET]: Production Cartesia Mode activated.")
+        mode_str = "Microsoft Free Voices (0 Credits Used)" if tts_test_mode else "Cartesia Sonic (Studio Latency)"
+        print(f"\n[VOICE ENGINE SWITCHED]: {mode_str}\n")
+        await broadcast("voice_mode", {"test_mode": tts_test_mode})
+        return web.json_response({"success": True, "test_mode": tts_test_mode})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=400)
+
+
+async def api_get_timers(request):
+    """Returns active timers JSON."""
+    return web.json_response({"timers": get_timers_data()})
+
+async def api_add_timer(request):
+    """Creates a new timer instance."""
+    try:
+        data = await request.json()
+        duration = int(data.get("seconds") or (int(data.get("minutes", 1)) * 60))
+        name = data.get("name") or f"{duration}s timer"
+        context = data.get("context", "general")
+        lang = data.get("lang", "en")
+        tid = await start_timer_instance(duration=duration, name=name, context=context, lang=lang)
+        return web.json_response({"success": True, "timer_id": tid, "timers": get_timers_data()})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=400)
+
+async def api_cancel_timer(request):
+    """Cancels timers by id, name, or all."""
+    try:
+        data = await request.json()
+        tid = data.get("id")
+        name = data.get("name")
+        cancel_all = bool(data.get("all", False))
+        count = await cancel_timer_instance(timer_id=tid, name=name, cancel_all=cancel_all)
+        return web.json_response({"success": True, "cancelled": count, "timers": get_timers_data()})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=400)
+
+async def api_get_stopwatch(request):
+    """Returns stopwatch state."""
+    return web.json_response(get_stopwatch_data())
+
+async def api_post_stopwatch(request):
+    """Executes stopwatch actions: start, stop, pause, lap, reset."""
+    try:
+        data = await request.json()
+        action = data.get("action", "").lower().strip()
+        lang = data.get("lang", "en")
+        msg = handle_stopwatch_action(action, lang)
+        return web.json_response({"success": True, "message": msg, "stopwatch": get_stopwatch_data()})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=400)
+
+async def api_get_alarms(request):
+    """Returns scheduled alarms."""
+    return web.json_response({"alarms": get_alarms_data()})
+
+async def api_add_alarm(request):
+    """Schedules a new alarm."""
+    try:
+        data = await request.json()
+        time_str = data.get("time_str", "").strip()
+        label = data.get("label", "Alarm").strip()
+        lang = data.get("lang", "en")
+        aid = await start_alarm_instance(time_str=time_str, label=label, lang=lang)
+        if not aid:
+            return web.json_response({"error": f"Invalid time string: '{time_str}'"}, status=400)
+        return web.json_response({"success": True, "alarm_id": aid, "alarms": get_alarms_data()})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=400)
+
+async def api_cancel_alarm(request):
+    """Cancels scheduled alarms by id, time, or all."""
+    try:
+        data = await request.json()
+        aid = data.get("id")
+        time_str = data.get("time_str")
+        cancel_all = bool(data.get("all", False))
+        count = await cancel_alarm_instance(alarm_id=aid, time_str=time_str, cancel_all=cancel_all)
+        return web.json_response({"success": True, "cancelled": count, "alarms": get_alarms_data()})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=400)
+
+async def api_respond_cooking(request):
+    """Responds to pending cooking suggestion banner."""
+    global pending_timer_suggestion
+    try:
+        data = await request.json()
+        accepted = bool(data.get("accept", False))
+        if not pending_timer_suggestion:
+            return web.json_response({"success": False, "message": "No pending cooking suggestion"})
+        p = pending_timer_suggestion
+        pending_timer_suggestion = None
+        await broadcast("cooking_suggestion", None)
+        if accepted:
+            tid = await start_timer_instance(duration=p["seconds"], name=p["dish_display"], context="cooking", completion_phrase=p["complete"], lang=p["lang"])
+            return web.json_response({"success": True, "accepted": True, "timer_id": tid})
+        else:
+            return web.json_response({"success": True, "accepted": False})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=400)
+
+async def websocket_handler(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    ws_clients.add(ws)
+    try:
+        current_st = "Ready! Say 'Alexa' or click button below." if is_connected() else "Connecting to ESP32..."
+        await ws.send_str(json.dumps({"type": "status", "data": current_st}))
+        await ws.send_str(json.dumps({"type": "memory", "data": memory_data}))
+        if last_stt_text:
+            await ws.send_str(json.dumps({"type": "stt", "data": last_stt_text}))
+        if last_ai_text:
+            await ws.send_str(json.dumps({"type": "ai", "data": last_ai_text}))
+        if last_metrics_data:
+            await ws.send_str(json.dumps({"type": "metrics", "data": last_metrics_data}))
+        await ws.send_str(json.dumps({"type": "timers", "data": get_timers_data()}))
+        await ws.send_str(json.dumps({"type": "stopwatch", "data": get_stopwatch_data()}))
+        await ws.send_str(json.dumps({"type": "alarms", "data": get_alarms_data()}))
+        if pending_timer_suggestion:
+            await ws.send_str(json.dumps({"type": "cooking_suggestion", "data": pending_timer_suggestion}))
+    except Exception:
+        pass
+    try:
+        async for msg in ws:
+            pass
+    finally:
+        try:
+            ws_clients.remove(ws)
+        except KeyError:
+            pass
+    return ws
+
+async def api_live_state(request):
+    return web.json_response({
+        "status": "Ready! Say 'Alexa' or click button below." if is_connected() else "Connecting to ESP32...",
+        "is_connected": is_connected(),
+        "stt": last_stt_text,
+        "ai": last_ai_text,
+        "metrics": last_metrics_data,
+        "memory": memory_data,
+        "timers": get_timers_data(),
+        "stopwatch": get_stopwatch_data(),
+        "alarms": get_alarms_data()
+    })
+
+async def init_app():
+    app = web.Application()
+    app.router.add_get('/', index)
+    app.router.add_get('/ws', websocket_handler)
+    app.router.add_get('/api/live_state', api_live_state)
+    app.router.add_get('/start', force_start)
+    app.router.add_get('/api/memory', api_memory)
+    app.router.add_get('/api/test_voice', api_test_voice)
+    app.router.add_post('/api/test_voice', api_test_voice)
+    app.router.add_post('/api/query', api_query)
+    app.router.add_get('/api/interrupt', api_interrupt)
+    app.router.add_post('/api/interrupt', api_interrupt)
+    app.router.add_get('/api/test_timer', api_test_timer)
+    app.router.add_get('/api/test_mode', api_get_test_mode)
+    app.router.add_post('/api/test_mode', api_set_test_mode)
+    # Timers, Stopwatch, Alarms & Cooking REST Endpoints
+    app.router.add_get('/api/timers', api_get_timers)
+    app.router.add_post('/api/timers', api_add_timer)
+    app.router.add_post('/api/timers/cancel', api_cancel_timer)
+    app.router.add_get('/api/stopwatch', api_get_stopwatch)
+    app.router.add_post('/api/stopwatch', api_post_stopwatch)
+    app.router.add_get('/api/alarms', api_get_alarms)
+    app.router.add_post('/api/alarms', api_add_alarm)
+    app.router.add_post('/api/alarms/cancel', api_cancel_alarm)
+    async def api_get_volume(request):
+        global master_volume_percent, master_volume_locked, night_mode_override
+        return web.json_response({
+            "volume_percent": master_volume_percent,
+            "locked": master_volume_locked,
+            "night_mode_override": night_mode_override
+        })
+
+    async def api_set_volume(request):
+        global master_volume_percent, master_volume_locked
+        data = await request.json()
+        val = data.get("volume", 50)
+        master_volume_percent = max(10, min(100, int(val)))
+        master_volume_locked = True
+        await broadcast("volume", {"percent": master_volume_percent, "locked": True})
+        return web.json_response({"success": True, "volume": master_volume_percent})
+
+    app.router.add_post('/api/cooking/respond', api_respond_cooking)
+    app.router.add_get('/api/volume', api_get_volume)
+    app.router.add_post('/api/volume', api_set_volume)
+
+    async def api_call_mute(request):
+        call_audio_bridge.set_mute(True)
+        return web.json_response({"success": True, "muted": True})
+
+    async def api_call_unmute(request):
+        call_audio_bridge.set_mute(False)
+        return web.json_response({"success": True, "muted": False})
+
+    async def api_call_toggle_mute(request):
+        m = call_audio_bridge.toggle_mute()
+        return web.json_response({"success": True, "muted": m})
+
+    async def api_call_hangup(request):
+        handle_hangup_intent("en")
+        return web.json_response({"success": True, "call_ended": True})
+
+    async def api_call_state(request):
+        return web.json_response({
+            "is_active": call_audio_bridge.is_active,
+            "is_muted": call_audio_bridge.is_muted
+        })
+
+    app.router.add_post('/api/call/mute', api_call_mute)
+    app.router.add_post('/api/call/unmute', api_call_unmute)
+    app.router.add_post('/api/call/toggle_mute', api_call_toggle_mute)
+    app.router.add_post('/api/call/hangup', api_call_hangup)
+    app.router.add_get('/api/call/state', api_call_state)
+
+    asyncio.create_task(connection_supervisor())
+    asyncio.create_task(alarm_supervisor())
+    return app
+
+if __name__ == '__main__':
+    print("="*60)
+    print("   Starting Alexa Daemon Engine (Guardian Assistant)")
+    print("   ESP32 Target: 192.168.31.200:6053")
+    print("   Groq STT + LLM | Microsoft Cloud Neural & Cartesia TTS")
+    print("   Web Dashboard: http://localhost:8080")
+    print("="*60)
+    web.run_app(init_app(), port=8080)
