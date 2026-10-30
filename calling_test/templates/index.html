@@ -848,3 +848,125 @@
       document.getElementById("hangupBtn").style.display = "none";
       document.getElementById("muteBtn").style.display = "none";
 
+      const dot = document.getElementById("pulseDot");
+      const statusText = document.getElementById("stateText");
+
+      dot.className = "pulse-dot";
+      statusText.innerText = "Call Ended (Idle)";
+
+      appendLog("Call terminated / Hang up.", "error");
+
+      try {
+        await fetch("/api/hangup", { method: "POST" });
+      } catch (e) {}
+    }
+
+    async function loadContacts() {
+      try {
+        const resp = await fetch("/api/contacts");
+        const contacts = await resp.json();
+        renderContacts(contacts);
+      } catch (e) {
+        console.error("Failed to load contacts:", e);
+      }
+    }
+
+    function renderContacts(contacts) {
+      const container = document.getElementById("contactsListContainer");
+      container.innerHTML = "";
+      const keys = Object.keys(contacts);
+      document.getElementById("contactsCountBadge").innerText = `${keys.length} Contact${keys.length === 1 ? '' : 's'}`;
+
+      if (keys.length === 0) {
+        container.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px; text-align: center; padding: 12px;">No contacts saved yet. Add one above!</div>`;
+        return;
+      }
+
+      keys.forEach(k => {
+        const c = contacts[k];
+        const item = document.createElement("div");
+        item.className = "contact-item";
+        item.innerHTML = `
+          <div class="contact-info">
+            <span class="contact-name">👤 ${escapeHtml(c.name)}</span>
+            <span class="contact-number">${escapeHtml(c.number)}</span>
+          </div>
+          <div class="contact-actions">
+            <button class="btn-call-mini" onclick="dialContact('${escapeHtml(c.number)}')">
+              <span>📞 Dial</span>
+            </button>
+            <button class="btn-del-mini" onclick="deleteContact('${escapeHtml(k)}')" title="Delete contact">
+              <span>🗑️</span>
+            </button>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    async function addContact() {
+      const nameInput = document.getElementById("newContactName");
+      const numInput = document.getElementById("newContactNumber");
+      const name = nameInput.value.trim();
+      const number = numInput.value.trim();
+
+      if (!name || !number) {
+        alert("Please enter both Name and Phone Number");
+        return;
+      }
+
+      try {
+        const resp = await fetch("/api/contacts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name, number: number })
+        });
+        const data = await resp.json();
+        if (data.status === "ok") {
+          nameInput.value = "";
+          numInput.value = "";
+          renderContacts(data.contacts);
+          appendLog(`Contact saved: ${name} (${number})`, "success");
+        } else {
+          alert("Error: " + data.message);
+        }
+      } catch (e) {
+        alert("Failed to save contact: " + e);
+      }
+    }
+
+    async function deleteContact(key) {
+      if (!confirm(`Delete contact '${key}'?`)) return;
+      try {
+        const resp = await fetch(`/api/contacts/${encodeURIComponent(key)}`, {
+          method: "DELETE"
+        });
+        const data = await resp.json();
+        if (data.status === "ok") {
+          renderContacts(data.contacts);
+          appendLog(`Contact deleted: ${key}`, "normal");
+        }
+      } catch (e) {
+        alert("Failed to delete contact: " + e);
+      }
+    }
+
+    function dialContact(number) {
+      const input = document.getElementById("phoneInput");
+      input.value = number;
+      appendLog(`Contact selected: ${number}. Dialing now...`, "normal");
+      startCall(false);
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    window.onload = () => {
+      appendLog("System ready. Connected to local server.", "success");
+      checkJioStatus();
+      loadContacts();
+    };
+  </script>
+</body>
+</html>
