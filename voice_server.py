@@ -7998,3 +7998,403 @@ async def ensure_connected():
                     wake_word_button_key = entity.key
                     print(f"Cached 'Restart Wake Word' entity key: {wake_word_button_key}")
                 elif hasattr(entity, 'name') and entity.name == "Aura LED":
+                    aura_led_key = entity.key
+                    print(f"Cached 'Aura LED' entity key: {aura_led_key}")
+        except Exception as e:
+            print(f"Could not list entities for button cache: {e}")
+            
+        return True
+    except Exception as e:
+        print(f"Connection attempt to ESP32 failed: {e}")
+        await broadcast("status", f"Connection failed: {e}. Retrying in background...")
+        if client is not None:
+            try:
+                await asyncio.wait_for(client.disconnect(), timeout=1.0)
+            except Exception:
+                pass
+            client = None
+        return False
+
+async def connection_supervisor():
+    """Keeps connection alive and automatically flushes buffered alerts upon reconnection."""
+    global pending_disconnected_alerts
+    while True:
+        try:
+            if not is_connected():
+                await ensure_connected()
+            elif pending_disconnected_alerts:
+                now = time.time()
+                to_flush = [a for a in pending_disconnected_alerts if now - a.get("timestamp", now) <= 90]
+                pending_disconnected_alerts.clear()
+                for alert in to_flush:
+                    elapsed_sec = int(now - alert.get("timestamp", now))
+                    phrase = alert.get("phrase", "")
+                    if elapsed_sec > 5:
+                        phrase = f"Notice: {phrase} (completed {elapsed_sec} seconds ago)"
+                    print(f"[RECONNECTION FLUSH]: Delivering buffered alert '{phrase}'")
+                    await stream_audio_to_esp32(alert.get("audio"), phrase)
+        except Exception as e:
+            print(f"Supervisor reconnect error: {e}")
+        await asyncio.sleep(2.0)
+
+# --- Web Dashboard & API ---
+async def index(request):
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Voice Assistant & Culinary Timer Hub</title>
+    <style>
+        :root {
+            --bg: #090d16;
+            --card-bg: #131c2e;
+            --border: #1e293b;
+            --accent: #38bdf8;
+            --accent-hover: #0284c7;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --card-radius: 14px;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0; padding: 24px;
+            background: var(--bg); color: var(--text);
+            line-height: 1.5;
+        }
+        .container { max-width: 960px; margin: 0 auto; }
+        header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+        }
+        h1 {
+            margin: 0; font-size: 26px;
+            background: linear-gradient(135deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .badge {
+            display: inline-block; padding: 5px 12px; border-radius: 9999px;
+            font-size: 0.8em; font-weight: 600;
+        }
+        .badge.status-online { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge.status-active { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; }
+        .badge.status-offline { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge.pill-cooking { background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); }
+        .badge.pill-general { background: rgba(148, 163, 184, 0.2); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
+        .card {
+            background: var(--card-bg); padding: 18px 20px; border-radius: var(--card-radius);
+            margin-bottom: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); border: 1px solid var(--border);
+        }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+        h3 {
+            margin-top: 0; margin-bottom: 12px; font-size: 15px; color: var(--accent);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .log {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            color: #e2e8f0; font-size: 0.9em; background: #060910; padding: 12px;
+            border-radius: 8px; border: 1px solid var(--border); min-height: 24px; word-wrap: break-word;
+        }
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        button {
+            padding: 8px 14px; background: var(--accent); color: #040914; border: none;
+            border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        button:hover { background: var(--accent-hover); color: white; }
+        button.secondary { background: #1e293b; color: var(--text); border: 1px solid #334155; }
+        button.secondary:hover { background: #334155; }
+        button.btn-danger { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+        button.btn-danger:hover { background: #dc2626; color: white; }
+        button.btn-success { background: #059669; color: white; }
+        button.btn-success:hover { background: #10b981; }
+        button.btn-preset {
+            background: #0b1324; color: #cbd5e1; border: 1px solid #243552;
+            padding: 6px 12px; font-size: 12px; border-radius: 20px;
+        }
+        button.btn-preset:hover { background: #1e293b; border-color: var(--accent); color: var(--accent); }
+        .metrics-pill {
+            display: inline-block; background: #090d16; padding: 4px 10px; border-radius: 6px;
+            font-size: 12px; color: var(--warning); margin-right: 8px; border: 1px solid #2d3748;
+        }
+        /* Cooking Alert Banner */
+        .cooking-banner {
+            border: 1px solid #f59e0b; background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.08));
+            padding: 16px 20px; border-radius: 12px; margin-bottom: 18px; display: none;
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.2);
+        }
+        /* Timer Card Items */
+        .timer-item {
+            background: #090d16; border: 1px solid var(--border); border-radius: 10px;
+            padding: 12px 16px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px;
+        }
+        .timer-header { display: flex; justify-content: space-between; align-items: center; }
+        .timer-title { font-weight: 700; font-size: 15px; color: #f1f5f9; display: flex; align-items: center; gap: 8px; }
+        .timer-digits { font-family: monospace; font-size: 22px; font-weight: 800; color: #38bdf8; }
+        .progress-bar-bg {
+            background: #1e293b; border-radius: 6px; height: 8px; width: 100%; overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%; background: linear-gradient(90deg, #38bdf8, #818cf8);
+            border-radius: 6px; transition: width 0.3s linear;
+        }
+        /* Stopwatch Display */
+        .stopwatch-clock {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 42px; font-weight: 800; color: #38bdf8; text-align: center;
+            padding: 12px 0; letter-spacing: 2px; text-shadow: 0 0 16px rgba(56, 189, 248, 0.3);
+        }
+        .lap-list { max-height: 140px; overflow-y: auto; font-size: 12px; font-family: monospace; }
+        .lap-row { display: flex; justify-content: space-between; padding: 4px 8px; border-bottom: 1px solid #1e293b; }
+        /* Alarms List */
+        .alarm-item {
+            background: #090d16; border: 1px solid var(--border); border-radius: 8px;
+            padding: 10px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .alarm-time { font-family: monospace; font-size: 18px; font-weight: 700; color: #f59e0b; }
+        .input-inline {
+            background: #090d16; border: 1px solid #334155; color: white; padding: 6px 10px;
+            border-radius: 6px; font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>Alexa Voice Assistant</h1>
+                <div style="color: var(--text-muted); font-size: 13px;">Smart Timers • Stopwatches • Alarms • Proactive Culinary Intelligence</div>
+            </div>
+            <div id="status-badge" class="badge status-online">Online</div>
+        </header>
+
+        <!-- Proactive Cooking Suggestion Alert -->
+        <div id="cooking-banner" class="cooking-banner">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div>
+                    <div style="font-weight: 700; color: #fbbf24; font-size: 15px;" id="cooking-banner-title">🍳 Cooking Detected!</div>
+                    <div id="cooking-banner-prompt" style="color: #f1f5f9; font-size: 14px; margin-top: 4px;">Should I set a 2-minute timer for your Maggi?</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn-success" onclick="respondCooking(true)">✅ Yes, Set Timer</button>
+                    <button class="secondary" onclick="respondCooking(false)">❌ Dismiss</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Assistant Status & Voice Engine -->
+        <div class="grid-2">
+            <div class="card">
+                <h3><span>🎙️ Assistant Status</span> <span id="status-text" style="color: #4ade80; font-size: 13px;">Ready! Say "Alexa"</span></h3>
+                <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 8px;">
+                    Wake Word: <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">Say "Alexa"</span>
+                </div>
+                <div class="btn-group">
+                    <button id="btn-force-mic" onclick="triggerMic()">🎤 Force Mic</button>
+                    <button class="secondary" onclick="testVoice()">🔊 Test Voice</button>
+                    <button class="btn-danger" onclick="interruptAudio()">🛑 Barge-In Stop</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3><span>⚡ Voice Engine Mode</span> <span id="mode-badge" class="badge status-active">Cartesia</span></h3>
+                <div id="mode-desc" style="color: var(--text-muted); font-size: 13px; margin-bottom: 10px;">
+                    Cartesia Sonic sub-600ms latency.
+                </div>
+                <div class="btn-group">
+                    <button id="btn-mode-cartesia" onclick="setVoiceMode(false)">⚡ Cartesia Sonic</button>
+                    <button id="btn-mode-test" class="secondary" onclick="setVoiceMode(true)">🛡️ Free MS Neural</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live STT & AI Response -->
+        <div class="grid-2">
+            <div class="card">
+                <h3>🗣️ Transcribed Speech (STT)</h3>
+                <div id="stt" class="log">Waiting for speech...</div>
+            </div>
+            <div class="card">
+                <h3>🤖 Alexa Brain Response</h3>
+                <div id="ai" class="log">Waiting for query...</div>
+            </div>
+        </div>
+
+        <!-- Latency Breakdown & Voice-to-Voice Timestamp -->
+        <div class="card" style="padding: 14px 18px;">
+            <div id="metrics-bar" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <span class="metrics-pill">STT: -- ms</span>
+                <span class="metrics-pill">LLM: -- ms</span>
+                <span class="metrics-pill">TTS: -- ms</span>
+                <span class="metrics-pill" style="color: #38bdf8; font-weight: bold; border-color: #0284c7; background: rgba(56, 189, 248, 0.1);">⚡ First Word (V2V): -- ms</span>
+                <span class="metrics-pill" style="color: #4ade80; font-weight: bold;">Total: -- ms</span>
+            </div>
+            <div id="timestamp-bar" style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #1e293b; font-size: 11px; color: #94a3b8; display: flex; gap: 16px; flex-wrap: wrap; align-items: center;">
+                <span>🎤 User Stopped: <strong id="ts-speech-end" style="color: #f1f5f9; font-family: monospace;">--:--:--.---</strong></span>
+                <span>🔊 First Word Started: <strong id="ts-first-audio" style="color: #38bdf8; font-family: monospace;">--:--:--.---</strong></span>
+                <span>⚡ Latency: <strong id="ts-v2v-latency" style="color: #4ade80; font-weight: bold;">-- ms</strong></span>
+            </div>
+        </div>
+
+        <!-- CULINARY TIMERS CARD -->
+        <div class="card">
+            <h3>
+                <span>⏱️ Multi-Timer Hub</span>
+                <div style="display:flex; gap: 8px; align-items:center;">
+                    <span id="timers-count-badge" class="badge pill-general">0 Active</span>
+                    <button class="btn-danger" style="padding: 4px 10px; font-size: 11px;" onclick="cancelAllTimers()">Cancel All</button>
+                </div>
+            </h3>
+            
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Culinary Quick Presets:</div>
+                <div class="btn-group" style="margin-top:0;">
+                    <button class="btn-preset" onclick="addPresetTimer('Maggi', 120)">🍜 Maggi (2m)</button>
+                    <button class="btn-preset" onclick="addPresetTimer('Tea', 240)">☕ Tea / Chai (4m)</button>
+                    <button class="btn-preset" onclick="addPresetTimer('Boiling Eggs', 480)">🥚 Eggs (8m)</button>
+                    <button class="btn-preset" onclick="addPresetTimer('Milk', 180)">🥛 Milk (3m)</button>
+                    <button class="btn-preset" onclick="addPresetTimer('Rice', 600)">🍚 Rice (10m)</button>
+                    <button class="btn-preset" onclick="addPresetTimer('Quick Test', 10)">⚡ 10s Test</button>
+                </div>
+            </div>
+
+            <!-- Custom Timer Input -->
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; background: #060910; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
+                <input type="text" id="custom-timer-name" class="input-inline" placeholder="Timer label (e.g. Pasta)" style="flex: 2; min-width: 140px;">
+                <input type="number" id="custom-timer-mins" class="input-inline" placeholder="Minutes" min="0" max="180" style="width: 80px;">
+                <input type="number" id="custom-timer-secs" class="input-inline" placeholder="Secs" min="0" max="59" style="width: 70px;">
+                <button onclick="addCustomTimer()">+ Set Timer</button>
+            </div>
+
+            <!-- Active Timers Container -->
+            <div id="timers-container">
+                <div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 16px 0;">No active timers running. Say "Alexa, set a 2-minute timer for Maggi" or click a preset above!</div>
+            </div>
+        </div>
+
+        <!-- STOPWATCH & ALARMS GRID -->
+        <div class="grid-2">
+            <!-- STOPWATCH -->
+            <div class="card">
+                <h3>
+                    <span>⏱️ Stopwatch</span>
+                    <span id="stopwatch-badge" class="badge pill-general">Stopped</span>
+                </h3>
+                <div id="stopwatch-clock" class="stopwatch-clock">00:00.00</div>
+                <div class="btn-group" style="justify-content: center; margin-bottom: 12px;">
+                    <button id="btn-sw-toggle" class="btn-success" onclick="toggleStopwatch()">▶ Start</button>
+                    <button class="secondary" onclick="lapStopwatch()">⏱ Lap</button>
+                    <button class="secondary" onclick="resetStopwatch()">🔄 Reset</button>
+                </div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Lap History:</div>
+                <div id="laps-container" class="lap-list">
+                    <div style="color: #64748b; padding: 4px;">No laps recorded.</div>
+                </div>
+            </div>
+
+            <!-- ALARMS -->
+            <div class="card">
+                <h3>
+                    <span>🔔 Clock Alarms</span>
+                    <span id="alarms-count-badge" class="badge pill-general">0 Set</span>
+                </h3>
+                <div style="display: flex; gap: 8px; margin-bottom: 10px; background: #060910; padding: 8px; border-radius: 8px; border: 1px solid var(--border);">
+                    <input type="time" id="alarm-time-input" class="input-inline" style="flex: 1;">
+                    <input type="text" id="alarm-label-input" class="input-inline" placeholder="Label (Wake-up)" style="flex: 1;">
+                    <button onclick="addCustomAlarm()">Set</button>
+                </div>
+                <div class="btn-group" style="margin-bottom: 12px; margin-top: 0;">
+                    <button class="btn-preset" onclick="addPresetAlarm('06:30 AM', 'Morning Wake-up')">☀️ 06:30 AM</button>
+                    <button class="btn-preset" onclick="addPresetAlarm('07:00 AM', 'College Alarm')">🎓 07:00 AM</button>
+                    <button class="btn-preset" onclick="addPresetAlarm('10:00 PM', 'Sleep Reminder')">🌙 10:00 PM</button>
+                </div>
+                <div id="alarms-container">
+                    <div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 12px 0;">No alarms scheduled. Say "Alexa, set alarm for 6:30 AM"</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PERSISTENT MEMORY -->
+        <div class="card">
+            <h3>🧠 Autonomous Long-Term Memory</h3>
+            <div id="memory-notes" class="log" style="font-size: 13px; max-height: 140px; overflow-y: auto;">Loading memory...</div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let timersData = [];
+        let stopwatchData = { running: false, elapsed: 0, start_time: null, elapsed_before_pause: 0, laps: [] };
+        let alarmsData = [];
+        let cookingData = null;
+
+        function connectWs() {
+            ws = new WebSocket("ws://" + window.location.host + "/ws");
+            ws.onopen = function() {
+                let b = document.getElementById("status-badge");
+                if (b) { b.innerText = "Online"; b.className = "badge status-online"; }
+            };
+            ws.onmessage = function(event) {
+                var msg = JSON.parse(event.data);
+                if (msg.type === "status") {
+                    document.getElementById("status-text").innerText = msg.data;
+                    let b = document.getElementById("status-badge");
+                    if (msg.data.includes("Ready") || msg.data.includes("Connected") || msg.data.includes("Idle") || msg.data.includes("Alexa")) {
+                        b.innerText = "Online"; b.className = "badge status-online";
+                    } else if (msg.data.includes("Listening") || msg.data.includes("Processing") || msg.data.includes("Synthesizing") || msg.data.includes("Thinking")) {
+                        b.innerText = "Active"; b.className = "badge status-active";
+                    } else if (msg.data.includes("Connecting") || msg.data.includes("reconnecting")) {
+                        b.innerText = "Connecting..."; b.className = "badge";
+                    } else {
+                        b.innerText = "Offline"; b.className = "badge status-offline";
+                    }
+                } else if (msg.type === "stt") {
+                    let el = document.getElementById("stt");
+                    if (el) el.innerText = msg.data;
+                } else if (msg.type === "ai") {
+                    let el = document.getElementById("ai");
+                    if (el) el.innerText = msg.data;
+                } else if (msg.type === "metrics") {
+                    renderMetrics(msg.data);
+                } else if (msg.type === "timers") {
+                    timersData = msg.data || [];
+                    renderTimers();
+                } else if (msg.type === "stopwatch") {
+                    stopwatchData = msg.data || {};
+                    renderStopwatchUI();
+                } else if (msg.type === "alarms") {
+                    alarmsData = msg.data || [];
+                    renderAlarms();
+                } else if (msg.type === "cooking_suggestion") {
+                    cookingData = msg.data;
+                    renderCookingBanner();
+                } else if (msg.type === "voice_mode") {
+                    updateModeUI(msg.data.test_mode);
+                } else if (msg.type === "memory") {
+                    renderMemoriesData(msg.data);
+                } else {
+                    var el = document.getElementById(msg.type);
+                    if (el) el.innerText = msg.data;
+                }
+            };
+            ws.onclose = function() {
+                document.getElementById("status-text").innerText = "Websocket reconnecting...";
+                setTimeout(connectWs, 2000);
+            };
+        }
+        connectWs();
+
+        function renderMetrics(m) {
+            if (!m) return;
+            let firstWordVal = (m.first_word_ms && m.first_word_ms > 0) ? m.first_word_ms : (m.tts_ms && m.tts_ms > 0 ? m.tts_ms : (m.total_ms ? Math.round(m.total_ms * 0.7) : "--"));
+            let firstWordText = `${firstWordVal} ms`;
+            let bar = document.getElementById("metrics-bar");
+            if (bar) {
+                bar.innerHTML = `
+                    <span class="metrics-pill">STT: ${m.stt_ms} ms</span>
+                    <span class="metrics-pill">LLM: ${m.llm_ms} ms</span>
+                    <span class="metrics-pill">TTS: ${m.tts_ms} ms</span>
