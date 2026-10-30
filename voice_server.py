@@ -6198,3 +6198,803 @@ def normalize_speech_for_tts(text: str, lang: str = "en") -> str:
     t = re.sub(r'\b(40[0-9]|41[0-9]|42[0-9]|11[0-9]|56[0-9]|60[0-9]|70[0-9]|50[0-9]|38[0-9]|39[0-9])\s*(\d{3})\b(?!\s*(?:rupees|dollars|रुपये|રૂપિયા))', repl_pin_digits, t)
     def repl_prefixed_pin(m):
         prefix = m.group(1)
+        digits = m.group(2) + m.group(3)
+        dw = digit_words.get(lang, digit_words["en"])
+        p1 = " ".join(dw.get(d, d) for d in digits[:3])
+        p2 = " ".join(dw.get(d, d) for d in digits[3:])
+        return f"{prefix}{p1}, {p2}"
+    t = re.sub(r'(\b(?:pin|pincode|postal|code|zip|zipcode|पिन|पिनकोड|પિન)\s+)(\d{3})\s*(\d{3})\b(?!\s*(?:rupees|dollars|रुपये|રૂપિયા))', repl_prefixed_pin, t, flags=re.IGNORECASE)
+
+    # Strip commas inside numbers (e.g. 15,000 -> 15000)
+    t = re.sub(r'(?<=\d),(?=\d)', '', t)
+    # Smooth out awkward Oxford comma right before 'and'/'or'
+    t = re.sub(r',\s*(?=and\b|or\b|आणि\b|અને\b|તથા\b)', ' ', t, flags=re.IGNORECASE)
+    # Replace markdown asterisks, colons, semicolons, em-dashes
+    t = re.sub(r'[*_#]', '', t)
+    t = re.sub(r'[:;—–]\s*', ', ', t)
+    t = re.sub(r',(\s*,)+', ',', t)
+    # Clean up spacing around punctuation and parentheses
+    t = re.sub(r'\s+([,.:!?।])', r'\1', t)
+    t = re.sub(r'([(])\s+', r'\1', t)
+    t = re.sub(r'\s{2,}', ' ', t).strip()
+    return t
+
+
+def run_edge_tts_sync(text_to_speak: str, voice: str = "en-IN-NeerjaNeural", context: str = "normal", radar_gain: float = 1.0, speed: float = 0.88) -> tuple[bytes | None, float]:
+    """High-speed studio neural voice via Edge TTS with zero daily quota limits and memory caching."""
+    t0 = time.time()
+    clean_text = text_to_speak.strip()
+    
+    # 0. Sub-Millisecond In-Memory Audio Cache
+    cache_key = (clean_text, voice, context, round(radar_gain, 2))
+    if cache_key in AUDIO_CACHE:
+        dt = (time.time() - t0) * 1000
+        print(f"[EDGE TTS CACHE HIT (0 ms)]: Instant audio for '{clean_text[:35]}'")
+        return AUDIO_CACHE[cache_key], dt
+
+    try:
+        async def _gen():
+            comm = edge_tts.Communicate(text_to_speak, voice, rate="+10%")
+            mp3_bytes = bytearray()
+            async for chunk in comm.stream():
+                if chunk['type'] == 'audio':
+                    mp3_bytes.extend(chunk['data'])
+            return bytes(mp3_bytes)
+            
+        try:
+            active_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            active_loop = None
+
+        if active_loop is not None and active_loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                try:
+                    mp3_data = pool.submit(lambda: asyncio.run(_gen())).result(timeout=6.5)
+                except concurrent.futures.TimeoutError:
+                    print(f"[EDGE TTS TIMEOUT]: Exceeded 6.5s limit for '{clean_text[:25]}' - falling back immediately")
+                    return None, (time.time() - t0) * 1000
+        else:
+            try:
+                mp3_data = asyncio.run(asyncio.wait_for(_gen(), timeout=6.5))
+            except Exception:
+                return None, (time.time() - t0) * 1000
+
+        if not mp3_data:
+            return None, (time.time() - t0) * 1000
+            
+        # Ultra-fast in-memory decode via miniaudio (~2ms)
+        try:
+            import miniaudio
+            decoded = miniaudio.decode(mp3_data, nchannels=1, sample_rate=16000, output_format=miniaudio.SampleFormat.SIGNED16)
+            raw_pcm = decoded.samples.tobytes()
+        except Exception:
+            # Fallback to ffmpeg subprocess if needed
+            proc = subprocess.Popen(
+                ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-f', 's16le', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '16000', 'pipe:1'],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            raw_pcm, _ = proc.communicate(input=mp3_data)
+        
+        # Calibrated voice normalization and DSP soft limiter
+        raw_pcm = apply_calibrated_volume_and_limiter(raw_pcm, voice_key=voice, context=context, radar_gain=radar_gain, boost_clarity=(radar_gain > 1.15))
+        
+        # Cache for zero-latency instant replay
+        AUDIO_CACHE[cache_key] = raw_pcm
+        if len(AUDIO_CACHE) > 150:
+            AUDIO_CACHE.pop(next(iter(AUDIO_CACHE)))
+            
+        dt = (time.time() - t0) * 1000
+        print(f"[EDGE NEURAL TTS ({dt:.0f} ms)]: Generated {len(raw_pcm)} bytes with {voice}")
+        return raw_pcm, dt
+    except Exception as e:
+        print(f"Edge TTS Error: {e}")
+        return None, (time.time() - t0) * 1000
+
+def run_offline_tts(text_to_speak: str) -> tuple[bytes | None, float]:
+    """Instant offline fallback using pyttsx3 if all internet services are down."""
+    t0 = time.time()
+    try:
+        engine = pyttsx3.init()
+        voices = engine.getProperty('voices')
+        for v in voices:
+            if "zira" in v.name.lower() or "female" in v.name.lower() or "david" not in v.name.lower():
+                engine.setProperty('voice', v.id)
+                break
+        engine.setProperty('rate', 165)
+        temp_wav = "offline_response.wav"
+        engine.save_to_file(text_to_speak, temp_wav)
+        engine.runAndWait()
+        
+        with wave.open(temp_wav, 'rb') as wf:
+            raw = wf.readframes(wf.getnframes())
+            sw = wf.getsampwidth()
+            ch = wf.getnchannels()
+            fr = wf.getframerate()
+            if ch == 2:
+                raw = audioop.tomono(raw, sw, 0.5, 0.5)
+            if fr != 16000:
+                raw, _ = audioop.ratecv(raw, sw, 1, fr, 16000, None)
+            raw = audioop.mul(raw, 2, 0.85)
+        dt = (time.time() - t0) * 1000
+        print(f"[OFFLINE TTS FALLBACK ({dt:.0f} ms)]: Audio {len(raw)} bytes")
+        return raw, dt
+    except Exception as e:
+        print(f"Offline TTS Error: {e}")
+        return None, (time.time() - t0) * 1000
+
+cartesia_lock = threading.Lock()
+
+def run_cartesia_tts(text_to_speak: str, lang: str = "en", context: str = "normal", radar_gain: float = 1.0, speed: float = 0.88) -> tuple[bytes | None, float, str]:
+    """Generates ultra-low-latency studio voice via Cartesia Sonic (16kHz S16LE raw PCM). Serialized via cartesia_lock to prevent 429 concurrency errors."""
+    global cartesia_key_index, cartesia_cooldown_until
+    
+    clean_text = text_to_speak.strip() if text_to_speak else ""
+    # Ensure there is actual speakable text (letters/numbers/scripts), not empty or pure punctuation
+    if not clean_text or not re.search(r'[\w\u0900-\u097F\u0A80-\u0AFF]', clean_text):
+        return None, 0.0, ""
+        
+    if not CARTESIA_KEYS or time.time() < cartesia_cooldown_until:
+        return None, 0.0, ""
+        
+    voice_info = CARTESIA_VOICE_MAP.get(lang, CARTESIA_VOICE_MAP["en"])
+    voice_id = voice_info["id"]
+    voice_name = voice_info["name"]
+    
+    quota_exhausted_count = 0
+    safe_speed = max(0.80, min(1.12, speed))
+    
+    # Strictly serialize Cartesia requests to keep concurrent connections <= 1, preventing 429 spikes
+    with cartesia_lock:
+        for attempt in range(max(2, len(CARTESIA_KEYS) * 2)):
+            current_key = CARTESIA_KEYS[cartesia_key_index]
+            payload = {
+                "model_id": "sonic-3.6",
+                "transcript": clean_text,
+                "voice": {"mode": "id", "id": voice_id},
+                "output_format": {
+                    "container": "raw",
+                    "encoding": "pcm_s16le",
+                    "sample_rate": 16000
+                },
+                "generation_config": {
+                    "speed": safe_speed
+                },
+                "language": lang
+            }
+            
+            t0 = time.time()
+            headers = {
+                "X-API-Key": current_key,
+                "Cartesia-Version": "2024-06-10",
+                "Content-Type": "application/json"
+            }
+            try:
+                resp = cloud_http_session.post("https://api.cartesia.ai/tts/bytes", json=payload, headers=headers, timeout=5.0)
+                if resp.status_code == 200:
+                    raw_pcm = resp.content
+                    dt = (time.time() - t0) * 1000
+                    raw_pcm = apply_calibrated_volume_and_limiter(raw_pcm, voice_key=f"cartesia_{lang}", context=context, radar_gain=radar_gain, boost_clarity=(radar_gain > 1.15))
+                    print(f"[CARTESIA SONIC ({dt:.0f} ms)]: Generated {len(raw_pcm)} bytes with {voice_name} ({lang.upper()} @ {safe_speed}x)")
+                    return raw_pcm, dt, f"Cartesia Sonic ({voice_name})"
+                else:
+                    dt = (time.time() - t0) * 1000
+                    err_body = resp.text
+                    print(f"[CARTESIA KEY {cartesia_key_index + 1} ERROR {resp.status_code}]: {err_body}")
+                    if resp.status_code == 402 or "quota_exceeded" in err_body or "insufficient_credits" in err_body:
+                        quota_exhausted_count += 1
+                        cartesia_key_index = (cartesia_key_index + 1) % len(CARTESIA_KEYS)
+                        print(f"[CARTESIA ROTATE]: Switched to Key index {cartesia_key_index + 1}")
+                    elif resp.status_code == 429:
+                        print(f"[CARTESIA 429]: Rate limit detected. Backing off 250ms and retrying ({attempt + 1})...")
+                        time.sleep(0.25)
+                        continue
+                    else:
+                        break
+            except Exception as e:
+                print(f"Cartesia TTS Error: {e}")
+                time.sleep(0.2)
+                continue
+            
+    # Set cooldown ONLY if EVERY key in the pool was confirmed out of credits (402)
+    if quota_exhausted_count >= len(CARTESIA_KEYS) and len(CARTESIA_KEYS) > 0:
+        print("[CARTESIA QUOTA]: All keys out of credits. Enabling cooldown for 30 minutes.")
+        cartesia_cooldown_until = time.time() + 1800  # 30 min cooldown
+    return None, 0.0, ""
+
+def run_tts(text_to_speak: str, user_query: str = '', raw_reply: str = '', forced_lang: str | None = None, context: str = "normal", radar_gain: float = 1.0, speed: float = 0.88, forced_voice: str | None = None, forced_tier: str | None = None) -> tuple[bytes | None, float, str]:
+    """
+    Studio-Quality Cloud Neural TTS Engine:
+    1. Tier 1: Cartesia Sonic Cloud Streaming (Sub-200ms ultra-low latency, studio multilingual)
+    2. Tier 2: Microsoft Indian Neural Cloud Voices (Studio quality: Neerja / Swara / Aarohi / Dhwani)
+    3. Emergency Offline Tier: Pyttsx3 (Failover only if cloud is unreachable)
+    """
+    global tts_test_mode
+    clean_check = text_to_speak.strip() if text_to_speak else ""
+    if not clean_check or not re.search(r'[\w\u0900-\u097F\u0A80-\u0AFF]', clean_check):
+        return None, 0.0, "Empty"
+    
+    # Honor forced language strictly if provided so voice personality never switches mid-sentence!
+    if forced_lang and forced_lang in ['en', 'hi', 'mr', 'gu']:
+        lang = forced_lang
+    else:
+        lang = detect_language(text_to_speak, user_query=user_query, raw_reply=raw_reply, forced_lang=forced_lang)
+        
+    spoken_text = normalize_speech_for_tts(text_to_speak, lang=lang)
+    print(f"[LANG ROUTING]: Detected '{lang.upper()}' for text: \"{spoken_text[:50]}...\"")
+    
+    if forced_voice:
+        target_voice = forced_voice
+    elif lang == 'gu':
+        target_voice = "gu-IN-DhwaniNeural"
+    elif lang == 'mr':
+        target_voice = "mr-IN-AarohiNeural"
+    elif lang == 'hi':
+        target_voice = "hi-IN-SwaraNeural"
+    else:
+        target_voice = "en-IN-NeerjaNeural" 
+
+        # Enforce strict turn-level engine tier to prevent mid-speech voice hopping
+    allow_cartesia = (forced_tier != "edge") and (not tts_test_mode) and bool(CARTESIA_KEYS) and (time.time() >= cartesia_cooldown_until)
+    
+    # Tier 1: Cartesia Sonic Cloud Streaming if active and permitted
+    if allow_cartesia:
+        pcm, dt, voice_label = run_cartesia_tts(spoken_text, lang=lang, context=context, radar_gain=radar_gain, speed=speed)
+        if pcm:
+            return pcm, dt, voice_label
+
+    # Tier 2: Microsoft Studio Cloud Neural (Neerja / Swara / Aarohi / Dhwani)
+    pcm, dt = run_edge_tts_sync(spoken_text, voice=target_voice, context=context, radar_gain=radar_gain, speed=speed)
+    if pcm:
+        return pcm, dt, f"Microsoft Neural ({target_voice})" 
+
+    print("[FAILOVER]: Cloud TTS unavailable. Switching to Offline Voice...")
+    pcm, dt = run_offline_tts(spoken_text)
+    return pcm, dt, "Offline Voice"
+
+# --- Timer & Alarm Loops ---
+_timer_seq = 0
+_alarm_seq = 0
+
+async def start_timer_instance(duration: int, name: str, context: str = "general", completion_phrase: str = "", lang: str = "en", timer_id: str = None):
+    """Schedules an asynchronous background timer with chime and smart contextual completion alert."""
+    global active_timers, loop, _timer_seq
+    update_temporal_context(name, "timer", duration)
+    if not timer_id:
+        _timer_seq += 1
+        timer_id = f"timer_{int(time.time()*1000)}_{_timer_seq}"
+        
+    start_time = time.time()
+    end_time = start_time + duration
+    
+    if not completion_phrase:
+        duration_desc = format_duration_desc(duration, lang)
+        if lang == "hi":
+            completion_phrase = f"श्रवण, आपका {name} का {duration_desc} का टाइमर पूरा हो गया है!"
+        elif lang == "mr":
+            completion_phrase = f"श्रवण, तुमचा {name} चा {duration_desc} चा टायमर पूर्ण झाला आहे!"
+        elif lang == "gu":
+            completion_phrase = f"શ્રવણ, તમારો {name} માટેનો {duration_desc} નો ટાઈમર પૂરો થઈ ગયો છે!"
+        else:
+            completion_phrase = f"Shravan, your {duration_desc} timer for {name} is complete!"
+            
+    async def _timer_worker():
+        try:
+            await asyncio.sleep(duration)
+            print(f"[TIMER EXPIRED]: '{name}' ({duration}s)")
+            if timer_id in active_timers:
+                del active_timers[timer_id]
+                await broadcast("timers", get_timers_data())
+                
+            await broadcast("status", f"⏰ Timer Finished: {name}!")
+            
+            chime_pcm = make_chime_pcm(duration=0.6)
+            await execute_priority_alert(chime_pcm, completion_phrase, lang=lang, alert_type="timer", name=name)
+        except asyncio.CancelledError:
+            print(f"[TIMER CANCELLED]: Task for '{name}' was cancelled.")
+        except Exception as e:
+            print(f"[TIMER WORKER EXCEPTION]: {e}")
+            
+    task = asyncio.create_task(_timer_worker())
+    active_timers[timer_id] = {
+        "id": timer_id,
+        "name": name,
+        "duration": duration,
+        "start_time": start_time,
+        "end_time": end_time,
+        "context": context,
+        "completion_phrase": completion_phrase,
+        "lang": lang,
+        "task": task
+    }
+    await broadcast("timers", get_timers_data())
+    print(f"[TIMER REGISTERED]: ID {timer_id} | '{name}' for {duration}s")
+    return timer_id
+
+async def cancel_timer_instance(timer_id: str = None, name: str = None, cancel_all: bool = False):
+    """Cancels active timers either by ID, matching name, or all."""
+    global active_timers
+    cancelled_count = 0
+    if cancel_all:
+        for tid, t in list(active_timers.items()):
+            if t.get("task"):
+                t["task"].cancel()
+            cancelled_count += 1
+        active_timers.clear()
+    elif timer_id and timer_id in active_timers:
+        t = active_timers[timer_id]
+        if t.get("task"):
+            t["task"].cancel()
+        del active_timers[timer_id]
+        cancelled_count = 1
+    elif name:
+        target_name = name.lower().strip()
+        for tid, t in list(active_timers.items()):
+            if target_name in t["name"].lower() or t["name"].lower() in target_name:
+                if t.get("task"):
+                    t["task"].cancel()
+                del active_timers[tid]
+                cancelled_count += 1
+                break
+    await broadcast("timers", get_timers_data())
+    return cancelled_count
+
+async def start_timer(seconds: int, label: str):
+    """Backwards-compatible wrapper."""
+    return await start_timer_instance(duration=seconds, name=label)
+
+def handle_timer_query(user_query: str, lang: str) -> str:
+    global active_timers
+    q_lower = user_query.lower()
+    if not active_timers:
+        # Check if a timer finished recently (< 45 seconds ago)!
+        act_ctx = get_active_temporal_context()
+        if act_ctx and act_ctx.get("entity_type") == "timer":
+            t_age = int(time.time() - act_ctx.get("timestamp", 0))
+            if t_age < 45:
+                t_name = act_ctx.get("last_entity", "timer")
+                if lang == "hi":
+                    return f"आपकी {t_name} टाइमर {t_age} सेकंड पहले पूरी हो चुकी है। अभी कोई और टाइमर चालू नहीं है।"
+                elif lang == "mr":
+                    return f"तुमची {t_name} टायमर {t_age} सेकंदांपूर्वी पूर्ण झाली आहे. सध्या दुसरा कोणताही टायमर सुरू नाही."
+                elif lang == "gu":
+                    return f"તમારી {t_name} ટાઈમર {t_age} સેકન્ડ પહેલા પૂર્ણ થઈ ચૂકી છે. હાલમાં કોઈ અન્ય ટાઈમર ચાલુ નથી."
+                else:
+                    return f"Your {t_name} timer finished {t_age} seconds ago. No other timers are running."
+        empty_map = {
+            "hi": "अभी कोई टाइमर चालू नहीं है।",
+            "mr": "सध्या कोणताही टायमर सुरू नाही.",
+            "gu": "હાલમાં કોઈ ટાઈમર ચાલુ નથી.",
+            "en": "No timers are currently running."
+        }
+        return empty_map.get(lang, empty_map["en"])
+        
+    now = time.time()
+    target_timer = None
+    for tid, t in active_timers.items():
+        if t["name"].lower() in q_lower:
+            target_timer = t
+            break
+            
+    # Temporal memory resolution: If no timer explicitly named, check recent temporal subject
+    if not target_timer:
+        act_ctx = get_active_temporal_context()
+        if act_ctx and act_ctx.get("entity_type") == "timer":
+            last_name = act_ctx.get("last_entity", "").lower()
+            for tid, t in active_timers.items():
+                if t["name"].lower() == last_name:
+                    target_timer = t
+                    print(f"[TEMPORAL MEMORY MATCH]: Resolved ambiguous query '{user_query}' to recent timer '{t['name']}'")
+                    break
+            
+    if target_timer:
+        rem = max(0, int(target_timer["end_time"] - now))
+        if rem <= 1:
+            tid = target_timer.get("id")
+            if tid in active_timers:
+                t_obj = active_timers[tid]
+                if t_obj.get("task"):
+                    t_obj["task"].cancel()
+                del active_timers[tid]
+                dispatch_async(broadcast("timers", get_timers_data()))
+            if lang == "hi":
+                return f"आपकी {target_timer['name']} टाइमर अभी पूरी हो रही है! यह तैयार है।"
+            elif lang == "mr":
+                return f"तुमची {target_timer['name']} टायमर आत्ताच पूर्ण होत आहे! हे तयार आहे."
+            elif lang == "gu":
+                return f"તમારી {target_timer['name']} ટાઈમર હમણાં જ પૂર્ણ થઈ રહી છે! તે તૈયાર છે."
+            else:
+                t_lbl = target_timer['name'] if target_timer['name'].lower().endswith("timer") else f"{target_timer['name']} timer"
+                return f"Your {t_lbl} is completing right now! It is done."
+        else:
+            d_str = format_duration_desc(rem, lang)
+            if lang == "hi":
+                return f"आपकी {target_timer['name']} टाइमर में {d_str} बचे हैं।"
+            elif lang == "mr":
+                return f"तुमच्या {target_timer['name']} टायमरमध्ये {d_str} शिल्लक आहेत."
+            elif lang == "gu":
+                return f"તમારી {target_timer['name']} ટાઈમરમાં {d_str} બાકી છે."
+            else:
+                return f"{d_str} remaining for your {target_timer['name']} timer."
+            
+    # Single active timer query (e.g. "how much time left for my timer")
+    if len(active_timers) == 1:
+        single_t = list(active_timers.values())[0]
+        rem = max(0, int(single_t["end_time"] - now))
+        if rem <= 1:
+            tid = single_t.get("id")
+            if tid in active_timers:
+                t_obj = active_timers[tid]
+                if t_obj.get("task"):
+                    t_obj["task"].cancel()
+                del active_timers[tid]
+                dispatch_async(broadcast("timers", get_timers_data()))
+            if lang == "hi":
+                return f"आपकी {single_t['name']} टाइमर अभी पूरी हो रही है! यह तैयार है।"
+            elif lang == "mr":
+                return f"तुमची {single_t['name']} टायमर आत्ताच पूर्ण होत आहे! हे तयार आहे."
+            elif lang == "gu":
+                return f"તમારી {single_t['name']} ટાઈમર હમણાં જ પૂર્ણ થઈ રહી છે! તે તૈયાર છે."
+            else:
+                t_lbl = single_t['name'] if single_t['name'].lower().endswith("timer") else f"{single_t['name']} timer"
+                return f"Your {t_lbl} is completing right now! It is done."
+        else:
+            d_str = format_duration_desc(rem, lang)
+            if lang == "hi":
+                return f"आपकी {single_t['name']} टाइमर में {d_str} बचे हैं।"
+            elif lang == "mr":
+                return f"तुमच्या {single_t['name']} टायमरमध्ये {d_str} शिल्लक आहेत."
+            elif lang == "gu":
+                return f"તમારી {single_t['name']} ટાઈમરમાં {d_str} બાકી છે."
+            else:
+                return f"You have 1 active timer: {single_t['name']} with {d_str} remaining."
+
+    # Multiple active timers
+    t_items = []
+    for t in list(active_timers.values()):
+        rem = max(0, int(t["end_time"] - now))
+        if rem <= 1:
+            t_items.append(f"{t['name']} (completing now)")
+        else:
+            t_items.append(f"{t['name']} with {format_duration_desc(rem, lang)} remaining")
+        
+    if lang == "hi":
+        return f"{len(active_timers)} टाइमर चल रहे हैं: {', '.join(t_items)}।"
+    elif lang == "mr":
+        return f"{len(active_timers)} टायमर सुरू आहेत: {', '.join(t_items)}."
+    elif lang == "gu":
+        return f"{len(active_timers)} ટાઈમર ચાલુ છે: {', '.join(t_items)}."
+    else:
+        return f"You have {len(active_timers)} active timers: {', '.join(t_items)}."
+
+def handle_timer_cancel(user_query: str, lang: str) -> str:
+    global active_timers, loop
+    q_lower = user_query.lower()
+    explicit_all = any(w in q_lower for w in ["all", "sabhi", "sab", "sarva", "badha", "બધા", "सर्व", "सभी", "सब"])
+    
+    target_name = None
+    if not explicit_all:
+        for tid, t in active_timers.items():
+            if t["name"].lower() in q_lower:
+                target_name = t["name"]
+                break
+                
+    if explicit_all or not target_name:
+        dispatch_async(cancel_timer_instance(cancel_all=True))
+        all_map = {
+            "hi": "सभी टाइमर रद्द कर दिए गए हैं।",
+            "mr": "सर्व टायमर रद्द करण्यात आले आहेत.",
+            "gu": "બધા ટાઈમર રદ કરવામાં આવ્યા છે.",
+            "en": "All active timers have been cancelled."
+        }
+        return all_map.get(lang, all_map["en"])
+    else:
+        dispatch_async(cancel_timer_instance(name=target_name))
+        one_map = {
+            "hi": f"{target_name} का टाइमर रद्द कर दिया गया है।",
+            "mr": f"{target_name} चा टायमर रद्द केला आहे.",
+            "gu": f"{target_name} નો ટાઈમર રદ કરવામાં આવ્યો છે.",
+            "en": f"Cancelled your {target_name} timer."
+        }
+        return one_map.get(lang, one_map["en"])
+
+def handle_stopwatch_action(action: str, lang: str) -> str:
+    global active_stopwatch, loop
+    now = time.time()
+    reply = ""
+    if action == "start":
+        # Always start fresh from zero on 'Start stopwatch'!
+        active_stopwatch["elapsed_before_pause"] = 0.0
+        active_stopwatch["laps"].clear()
+        active_stopwatch["running"] = True
+        active_stopwatch["start_time"] = now
+        reply_map = {
+            "hi": "स्टॉपवॉच शुरू हो गई है!",
+            "mr": "स्टॉपवॉच सुरू झाली आहे!",
+            "gu": "સ્ટોપવોચ શરૂ થઈ ગઈ છે!",
+            "en": "Stopwatch started!"
+        }
+        reply = reply_map.get(lang, reply_map["en"])
+    elif action == "resume":
+        if not active_stopwatch["running"]:
+            active_stopwatch["running"] = True
+            active_stopwatch["start_time"] = now
+            d_desc = format_duration_desc(int(active_stopwatch["elapsed_before_pause"]), lang)
+            reply_map = {
+                "hi": f"स्टॉपवॉच {d_desc} से फिर शुरू कर दी गई है।",
+                "mr": f"स्टॉपवॉच {d_desc} पासून पुढे सुरू केली आहे.",
+                "gu": f"સ્ટોપવોચ {d_desc} થી ફરી શરૂ કરી દીધી છે.",
+                "en": f"Stopwatch resumed from {d_desc}."
+            }
+            reply = reply_map.get(lang, reply_map["en"])
+        else:
+            cur_el = (now - active_stopwatch["start_time"]) + active_stopwatch["elapsed_before_pause"]
+            d_desc = format_duration_desc(int(cur_el), lang)
+            reply = f"Stopwatch is already running at {d_desc}."
+    elif action == "lap":
+        if active_stopwatch["running"] and active_stopwatch["start_time"]:
+            total_el = (now - active_stopwatch["start_time"]) + active_stopwatch["elapsed_before_pause"]
+            prev_total = active_stopwatch["laps"][-1]["total_time"] if active_stopwatch["laps"] else 0.0
+            split = total_el - prev_total
+            lap_num = len(active_stopwatch["laps"]) + 1
+            active_stopwatch["laps"].append({
+                "lap_num": lap_num,
+                "split_time": round(split, 2),
+                "total_time": round(total_el, 2),
+                "formatted": format_stopwatch_clock(total_el)
+            })
+            d_desc = format_duration_desc(int(total_el), lang)
+            reply_map = {
+                "hi": f"लैप {lap_num} दर्ज किया: {d_desc}।",
+                "mr": f"लॅप {lap_num} नोंदवला: {d_desc}.",
+                "gu": f"લેપ {lap_num} નોંધાયો: {d_desc}.",
+                "en": f"Lap {lap_num} recorded at {d_desc}."
+            }
+            reply = reply_map.get(lang, reply_map["en"])
+        else:
+            reply_map = {
+                "hi": "स्टॉपवॉच चालू नहीं है। पहले स्टॉपवॉच शुरू करें।",
+                "mr": "स्टॉपवॉच सुरू नाही. आधी स्टॉपवॉच सुरू करा.",
+                "gu": "સ્ટોપવોચ ચાલુ નથી. પહેલાં સ્ટોપવોચ શરૂ કરો.",
+                "en": "Stopwatch is not running. Say 'Start stopwatch' first."
+            }
+            reply = reply_map.get(lang, reply_map["en"])
+    elif action == "stop":
+        if active_stopwatch["running"] and active_stopwatch["start_time"]:
+            active_stopwatch["elapsed_before_pause"] += (now - active_stopwatch["start_time"])
+            active_stopwatch["running"] = False
+            active_stopwatch["start_time"] = None
+            d_desc = format_duration_desc(int(active_stopwatch["elapsed_before_pause"]), lang)
+            reply_map = {
+                "hi": f"स्टॉपवॉच रोक दी गई है! कुल समय {d_desc} हुआ है।",
+                "mr": f"स्टॉपवॉच थांबवली आहे! एकूण वेळ {d_desc} झाली आहे.",
+                "gu": f"સ્ટોપવોચ રોકી દીધી છે! કુલ સમય {d_desc} થયો છે.",
+                "en": f"Stopwatch stopped! Total time elapsed is {d_desc}."
+            }
+            reply = reply_map.get(lang, reply_map["en"])
+        else:
+            d_desc = format_duration_desc(int(active_stopwatch["elapsed_before_pause"]), lang)
+            reply_map = {
+                "hi": f"स्टॉपवॉच पहले से ही रुकी हुई है, कुल समय {d_desc} है।",
+                "mr": f"स्टॉपवॉच आधीच थांबलेली आहे, एकूण वेळ {d_desc} आहे.",
+                "gu": f"સ્ટોપવોચ પહેલેથી જ રોકાયેલી છે, કુલ સમય {d_desc} છે.",
+                "en": f"Stopwatch is already stopped at {d_desc}."
+            }
+            reply = reply_map.get(lang, reply_map["en"])
+    elif action == "reset":
+        active_stopwatch["running"] = False
+        active_stopwatch["start_time"] = None
+        active_stopwatch["elapsed_before_pause"] = 0.0
+        active_stopwatch["laps"].clear()
+        reply_map = {
+            "hi": "स्टॉपवॉच शून्य पर रीसेट कर दी गई है।",
+            "mr": "स्टॉपवॉच शून्यावर रीसेट केली आहे.",
+            "gu": "સ્ટોપવોચ શૂન્ય પર રીસેટ કરી દીધી છે.",
+            "en": "Stopwatch has been reset to zero."
+        }
+        reply = reply_map.get(lang, reply_map["en"])
+    elif action == "query":
+        if active_stopwatch["running"] and active_stopwatch["start_time"]:
+            cur_el = (now - active_stopwatch["start_time"]) + active_stopwatch["elapsed_before_pause"]
+            d_desc = format_duration_desc(int(cur_el), lang)
+            reply_map = {
+                "hi": f"स्टॉपवॉच अभी {d_desc} पर चल रही है।",
+                "mr": f"स्टॉपवॉच सध्या {d_desc} वर चालू आहे.",
+                "gu": f"સ્ટોપવોચ અત્યારે {d_desc} પર ચાલુ છે.",
+                "en": f"The stopwatch is currently running at {d_desc}."
+            }
+            reply = reply_map.get(lang, reply_map["en"])
+        elif active_stopwatch["elapsed_before_pause"] > 0:
+            d_desc = format_duration_desc(int(active_stopwatch["elapsed_before_pause"]), lang)
+            reply = f"Stopwatch is paused at {d_desc}."
+        else:
+            reply_map = {
+                "hi": "स्टॉपवॉच शून्य पर बंद है।",
+                "mr": "स्टॉपवॉच शून्यावर थांबलेली आहे.",
+                "gu": "સ્ટોપવોચ શૂન્ય પર બંધ છે.",
+                "en": "Stopwatch is currently stopped at zero."
+            }
+            reply = reply_map.get(lang, reply_map["en"])
+            
+    dispatch_async(broadcast("stopwatch", get_stopwatch_data()))
+    return reply
+
+async def trigger_alarm(aid: str):
+    """Fires dedicated alarm tone and contextual voice alert when alarm expires with priority preemption."""
+    global active_alarms, is_listening, loop
+    if aid not in active_alarms:
+        return
+    alarm = active_alarms[aid]
+    del active_alarms[aid]
+    await broadcast("alarms", get_alarms_data())
+    await broadcast("status", f"🔔 Alarm Triggered: {alarm['label']} ({alarm['time_str']})!")
+    print(f"\n[ALARM RINGING]: {alarm['label']} ({alarm['time_str']})\n")
+    
+    alarm_pcm = make_alarm_pcm()
+    lang = alarm.get("lang", "en")
+    label = alarm.get("label", "Alarm")
+    t_str = alarm.get("time_str", "")
+    
+    if lang == "hi":
+        speech = f"श्रवण, उठ जाइए! {t_str} बज चुके हैं, आपका {label} बज रहा है!"
+    elif lang == "mr":
+        speech = f"श्रवण, उठा! {t_str} वाजले आहेत, तुमचा {label} वाजत आहे!"
+    elif lang == "gu":
+        speech = f"શ્રવણ, જાગી જાઓ! {t_str} વાગી ગયા છે, તમારું {label} વાગી રહ્યું છે!"
+    else:
+        speech = f"Shravan, wake up! It's {t_str}! Your alarm {label} is ringing!"
+        
+    await execute_priority_alert(alarm_pcm, speech, lang=lang, alert_type="alarm", name=label)
+
+async def start_alarm_instance(time_str: str, label: str = "Alarm", lang: str = "en", alarm_id: str = None):
+    """Schedules an alarm for clock time."""
+    global active_alarms, _alarm_seq
+    parsed = parse_alarm_time(time_str)
+    if not parsed:
+        return None
+    target_dt, fmt_time = parsed
+    target_ts = target_dt.timestamp()
+    if not alarm_id:
+        _alarm_seq += 1
+        alarm_id = f"alarm_{int(target_ts)}_{_alarm_seq}"
+        
+    alarm_data = {
+        "id": alarm_id,
+        "time_str": fmt_time,
+        "label": label or "Alarm",
+        "target_ts": target_ts,
+        "lang": lang
+    }
+    active_alarms[alarm_id] = alarm_data
+    await broadcast("alarms", get_alarms_data())
+    print(f"[ALARM SCHEDULED]: {label} for {fmt_time} (TS: {target_ts})")
+    return alarm_id
+
+async def cancel_alarm_instance(alarm_id: str = None, time_str: str = None, cancel_all: bool = False):
+    """Cancels active alarms."""
+    global active_alarms
+    cancelled = 0
+    if cancel_all:
+        cancelled = len(active_alarms)
+        active_alarms.clear()
+    elif alarm_id and alarm_id in active_alarms:
+        del active_alarms[alarm_id]
+        cancelled = 1
+    elif time_str:
+        parsed = parse_alarm_time(time_str)
+        t_fmt = parsed[1] if parsed else time_str.upper()
+        for aid, a in list(active_alarms.items()):
+            if a["time_str"].upper() == t_fmt:
+                del active_alarms[aid]
+                cancelled += 1
+                break
+    await broadcast("alarms", get_alarms_data())
+    return cancelled
+
+def handle_alarm_cancel(user_query: str, lang: str) -> str:
+    global active_alarms, loop
+    q_lower = user_query.lower()
+    explicit_all = any(w in q_lower for w in ["all", "sabhi", "sab", "sarva", "badha", "બધા", "सर्व", "सभी", "सब"])
+    parsed = parse_alarm_time(user_query)
+    time_target = parsed[1] if parsed else None
+    
+    if explicit_all or not time_target:
+        dispatch_async(cancel_alarm_instance(cancel_all=True))
+        all_map = {
+            "hi": "सभी अलार्म रद्द कर दिए गए हैं।",
+            "mr": "सर्व अलार्म रद्द केले आहेत.",
+            "gu": "બધા અલાર્મ રદ કરવામાં આવ્યા છે.",
+            "en": "All scheduled alarms have been cancelled."
+        }
+        return all_map.get(lang, all_map["en"])
+    else:
+        dispatch_async(cancel_alarm_instance(time_str=time_target))
+        one_map = {
+            "hi": f"{time_target} का अलार्म रद्द कर दिया गया है।",
+            "mr": f"{time_target} चा अलार्म रद्द केला आहे.",
+            "gu": f"{time_target} નો અલાર્મ રદ કરવામાં આવ્યો છે.",
+            "en": f"Alarm for {time_target} has been cancelled."
+        }
+        return one_map.get(lang, one_map["en"])
+
+def handle_alarm_list(lang: str) -> str:
+    global active_alarms
+    if not active_alarms:
+        empty_map = {
+            "hi": "कोई अलार्म सेट नहीं है।",
+            "mr": "कोणताही अलार्म सेट केलेला नाही.",
+            "gu": "કોઈ અલાર્મ સેટ નથી.",
+            "en": "No alarms are currently scheduled."
+        }
+        return empty_map.get(lang, empty_map["en"])
+        
+    now = time.time()
+    items = []
+    for a in active_alarms.values():
+        rem = max(0, int(a["target_ts"] - now))
+        items.append(f"{a['time_str']} ({a['label']})")
+        
+    if lang == "hi":
+        return f"{len(active_alarms)} अलार्म सेट हैं: {', '.join(items)}।"
+    elif lang == "mr":
+        return f"{len(active_alarms)} अलार्म सेट आहेत: {', '.join(items)}."
+    elif lang == "gu":
+        return f"{len(active_alarms)} અલાર્મ સેટ છે: {', '.join(items)}."
+    else:
+        if len(active_alarms) == 1:
+            return f"You have 1 scheduled alarm: {items[0]}."
+        else:
+            return f"You have {len(active_alarms)} scheduled alarms: {', '.join(items)}."
+
+async def alarm_supervisor():
+    """Background supervisor monitoring alarms with 500ms precision and reliable dispatch."""
+    global active_alarms
+    while True:
+        try:
+            now = time.time()
+            to_fire = []
+            for aid, a in list(active_alarms.items()):
+                if now >= a["target_ts"]:
+                    to_fire.append(aid)
+            for aid in to_fire:
+                try:
+                    await trigger_alarm(aid)
+                except Exception as ex_a:
+                    print(f"[ALARM FIRE EXCEPTION for {aid}]: {ex_a}")
+        except Exception as e:
+            print(f"[ALARM SUPERVISOR ERROR]: {e}")
+        await asyncio.sleep(0.5)
+
+# --- Audio Streamer to ESP32 ---
+async def stream_audio_queue_to_esp32(audio_queue: asyncio.Queue, label_text: str):
+    """
+    Streams 16kHz 16-bit Mono PCM audio chunks from an asynchronous queue to the ESP32
+    with clock-tracked pacing, mutex locking, burst pre-buffering, and gapless clause chaining.
+    Completely eliminates speaker pauses between sentences, DMA underruns, and 'two-two' chime collisions.
+    Supports atomic interruption / barge-in cancellation within < 20ms.
+    """
+    global playback_interrupt_event, active_audio_queue
+    active_audio_queue = audio_queue
+    lock = get_audio_stream_lock()
+    async with lock:
+        try:
+            if not is_connected():
+                while not audio_queue.empty():
+                    try:
+                        audio_queue.get_nowait()
+                    except Exception:
+                        break
+                return
+
+            chunk_size = 1024  # 1024 bytes = 512 samples = 32ms of 16kHz audio
+            total_chunks_sent = 0
+            stream_start = None
+            lead_target_sec = 0.220  # 220ms target lead (safe buffer, well within ESP32 300ms ring buffer)
+            first_event_sent = False
+            leftover_pcm = b''
+            
+            while True:
+                if playback_interrupt_event.is_set():
+                    print("[STREAM INTERRUPTED]: Audio queue playback loop terminated mid-speech.")
+                    break
+                pcm_bytes = await audio_queue.get()
