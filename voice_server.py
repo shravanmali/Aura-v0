@@ -8398,3 +8398,403 @@ async def index(request):
                     <span class="metrics-pill">STT: ${m.stt_ms} ms</span>
                     <span class="metrics-pill">LLM: ${m.llm_ms} ms</span>
                     <span class="metrics-pill">TTS: ${m.tts_ms} ms</span>
+                    <span class="metrics-pill" style="color: #38bdf8; font-weight: bold; border-color: #0284c7; background: rgba(56, 189, 248, 0.1);">⚡ First Word (V2V): ${firstWordText}</span>
+                    <span class="metrics-pill" style="color: #4ade80; font-weight: bold;">Total: ${m.total_ms} ms</span>
+                `;
+            }
+            let elSpeechEnd = document.getElementById("ts-speech-end");
+            let elFirstAudio = document.getElementById("ts-first-audio");
+            let elV2v = document.getElementById("ts-v2v-latency");
+            if (elSpeechEnd && m.speech_end_ts) elSpeechEnd.innerText = m.speech_end_ts;
+            if (elFirstAudio && m.first_audio_ts) elFirstAudio.innerText = m.first_audio_ts;
+            if (elV2v) elV2v.innerText = firstWordText;
+        }
+
+        // Automatic Live Polling Fallback (dual-channel: instant WS + 2s polling)
+        function pollLiveState() {
+            fetch('/api/live_state')
+                .then(r => r.json())
+                .then(d => {
+                    if (!d) return;
+                    if (d.status) {
+                        let st = document.getElementById("status-text");
+                        if (st && !st.innerText.includes("Listening") && !st.innerText.includes("Thinking")) {
+                            st.innerText = d.status;
+                        }
+                    }
+                    if (d.stt) {
+                        let el = document.getElementById("stt");
+                        if (el && (!el.innerText || el.innerText === "Waiting for speech...")) el.innerText = d.stt;
+                    }
+                    if (d.ai) {
+                        let el = document.getElementById("ai");
+                        if (el && (!el.innerText || el.innerText === "Waiting for query...")) el.innerText = d.ai;
+                    }
+                    if (d.metrics) renderMetrics(d.metrics);
+                    if (d.memory) renderMemoriesData(d.memory);
+                })
+                .catch(e => console.warn("Poll state error:", e));
+        }
+        setInterval(pollLiveState, 2000);
+        pollLiveState();
+
+        // --- CULINARY PROACTIVE BANNER ---
+        function renderCookingBanner() {
+            let el = document.getElementById("cooking-banner");
+            if (!cookingData) {
+                el.style.display = "none";
+                return;
+            }
+            document.getElementById("cooking-banner-title").innerText = `🍳 Cooking Suggestion: ${cookingData.dish_display}`;
+            document.getElementById("cooking-banner-prompt").innerText = cookingData.prompt || `Should I set a timer for your ${cookingData.dish_display}?`;
+            el.style.display = "block";
+        }
+
+        function respondCooking(accept) {
+            fetch('/api/cooking/respond', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({accept: accept})
+            }).then(() => {
+                cookingData = null;
+                renderCookingBanner();
+            });
+        }
+
+        // --- TIMERS RENDER & TICKER ---
+        function renderTimers() {
+            let container = document.getElementById("timers-container");
+            let badge = document.getElementById("timers-count-badge");
+            badge.innerText = `${timersData.length} Active`;
+            badge.className = timersData.length ? "badge status-active" : "badge pill-general";
+
+            if (!timersData || timersData.length === 0) {
+                container.innerHTML = `<div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 16px 0;">No active timers running. Say "Alexa, set a 2-minute timer for Maggi" or click a preset above!</div>`;
+                return;
+            }
+
+            let html = "";
+            let now = Date.now() / 1000;
+            timersData.forEach(t => {
+                let rem = Math.max(0, t.end_time - now);
+                let pct = Math.min(100, Math.max(0, ((t.duration - rem) / t.duration) * 100));
+                let m = Math.floor(rem / 60);
+                let s = Math.floor(rem % 60);
+                let timeStr = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                let icon = t.context === "cooking" ? "🍲" : "⏱️";
+                html += `
+                    <div class="timer-item" id="timer-box-${t.id}">
+                        <div class="timer-header">
+                            <div class="timer-title">
+                                <span>${icon} ${t.name}</span>
+                                <span class="badge ${t.context === 'cooking' ? 'pill-cooking' : 'pill-general'}">${t.context}</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div class="timer-digits" id="timer-digits-${t.id}">${timeStr}</div>
+                                <button class="btn-danger" style="padding: 4px 10px; font-size: 11px;" onclick="cancelTimer('${t.id}')">Cancel</button>
+                            </div>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="timer-bar-${t.id}" style="width: ${pct}%;"></div>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        // Smooth 100ms ticker for active timers
+        setInterval(() => {
+            if (!timersData || timersData.length === 0) return;
+            let now = Date.now() / 1000;
+            timersData.forEach(t => {
+                let rem = Math.max(0, t.end_time - now);
+                let pct = Math.min(100, Math.max(0, ((t.duration - rem) / t.duration) * 100));
+                let m = Math.floor(rem / 60);
+                let s = Math.floor(rem % 60);
+                let digitsEl = document.getElementById(`timer-digits-${t.id}`);
+                let barEl = document.getElementById(`timer-bar-${t.id}`);
+                if (digitsEl) digitsEl.innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                if (barEl) barEl.style.width = `${pct}%`;
+            });
+        }, 100);
+
+        function addPresetTimer(name, seconds) {
+            fetch('/api/timers', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name, seconds: seconds, context: 'cooking'})
+            });
+        }
+
+        function addCustomTimer() {
+            let name = document.getElementById("custom-timer-name").value.trim() || "Timer";
+            let mins = parseInt(document.getElementById("custom-timer-mins").value) || 0;
+            let secs = parseInt(document.getElementById("custom-timer-secs").value) || 0;
+            let total = (mins * 60) + secs;
+            if (total <= 0) { alert("Please enter minutes or seconds"); return; }
+            fetch('/api/timers', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name, seconds: total, context: 'general'})
+            }).then(() => {
+                document.getElementById("custom-timer-mins").value = "";
+                document.getElementById("custom-timer-secs").value = "";
+                document.getElementById("custom-timer-name").value = "";
+            });
+        }
+
+        function cancelTimer(id) {
+            fetch('/api/timers/cancel', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: id})
+            });
+        }
+
+        function cancelAllTimers() {
+            fetch('/api/timers/cancel', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({all: true})
+            });
+        }
+
+        // --- STOPWATCH RENDER & TICKER ---
+        function renderStopwatchUI() {
+            let btnToggle = document.getElementById("btn-sw-toggle");
+            let badge = document.getElementById("stopwatch-badge");
+            if (stopwatchData.running) {
+                btnToggle.innerText = "⏸ Pause";
+                btnToggle.className = "btn-danger";
+                badge.innerText = "Running";
+                badge.className = "badge status-active";
+            } else {
+                btnToggle.innerText = "▶ Start";
+                btnToggle.className = "btn-success";
+                badge.innerText = stopwatchData.elapsed_before_pause > 0 ? "Paused" : "Stopped";
+                badge.className = stopwatchData.elapsed_before_pause > 0 ? "badge pill-cooking" : "badge pill-general";
+            }
+
+            let lapsContainer = document.getElementById("laps-container");
+            let laps = stopwatchData.laps || [];
+            if (laps.length === 0) {
+                lapsContainer.innerHTML = `<div style="color: #64748b; padding: 4px;">No laps recorded.</div>`;
+            } else {
+                lapsContainer.innerHTML = laps.map(l => `
+                    <div class="lap-row">
+                        <span style="color: var(--accent);">Lap ${l.lap_num}</span>
+                        <span>Split: +${l.split_time}s</span>
+                        <span style="font-weight: 700;">${l.formatted}</span>
+                    </div>
+                `).reverse().join("");
+            }
+        }
+
+        setInterval(() => {
+            let el = document.getElementById("stopwatch-clock");
+            if (!el) return;
+            let elapsed = stopwatchData.elapsed_before_pause || 0;
+            if (stopwatchData.running && stopwatchData.start_time) {
+                elapsed += (Date.now() / 1000 - stopwatchData.start_time);
+            }
+            let total_cs = Math.floor(elapsed * 100);
+            let mins = Math.floor(total_cs / 6000) % 60;
+            let secs = Math.floor(total_cs / 100) % 60;
+            let cs = total_cs % 100;
+            el.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${cs.toString().padStart(2, '0')}`;
+        }, 40);
+
+        function toggleStopwatch() {
+            let action = stopwatchData.running ? "stop" : "start";
+            fetch('/api/stopwatch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: action})
+            });
+        }
+
+        function lapStopwatch() {
+            fetch('/api/stopwatch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: "lap"})
+            });
+        }
+
+        function resetStopwatch() {
+            fetch('/api/stopwatch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: "reset"})
+            });
+        }
+
+        // --- ALARMS RENDER ---
+        function renderAlarms() {
+            let container = document.getElementById("alarms-container");
+            let badge = document.getElementById("alarms-count-badge");
+            badge.innerText = `${alarmsData.length} Set`;
+            badge.className = alarmsData.length ? "badge status-active" : "badge pill-general";
+
+            if (!alarmsData || alarmsData.length === 0) {
+                container.innerHTML = `<div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 12px 0;">No alarms scheduled. Say "Alexa, set alarm for 6:30 AM"</div>`;
+                return;
+            }
+
+            let html = "";
+            let now = Date.now() / 1000;
+            alarmsData.forEach(a => {
+                let remSec = Math.max(0, Math.round(a.target_ts - now));
+                let h = Math.floor(remSec / 3600);
+                let m = Math.floor((remSec % 3600) / 60);
+                let remStr = h > 0 ? `in ${h}h ${m}m` : `in ${m}m`;
+                html += `
+                    <div class="alarm-item">
+                        <div>
+                            <div class="alarm-time">⏰ ${a.time_str}</div>
+                            <div style="font-size: 12px; color: var(--text-muted);">${a.label} • <span style="color: var(--accent);">${remStr}</span></div>
+                        </div>
+                        <button class="btn-danger" style="padding: 4px 10px; font-size: 11px;" onclick="cancelAlarm('${a.id}')">Delete</button>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function addPresetAlarm(timeStr, label) {
+            fetch('/api/alarms', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({time_str: timeStr, label: label})
+            });
+        }
+
+        function addCustomAlarm() {
+            let timeVal = document.getElementById("alarm-time-input").value;
+            let label = document.getElementById("alarm-label-input").value.trim() || "Alarm";
+            if (!timeVal) { alert("Please select a time"); return; }
+            fetch('/api/alarms', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({time_str: timeVal, label: label})
+            }).then(() => {
+                document.getElementById("alarm-time-input").value = "";
+                document.getElementById("alarm-label-input").value = "";
+            });
+        }
+
+        function cancelAlarm(id) {
+            fetch('/api/alarms/cancel', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: id})
+            });
+        }
+
+        // --- SYSTEM CONTROLS ---
+        function loadTestMode() {
+            fetch('/api/test_mode')
+                .then(r => r.json())
+                .then(data => updateModeUI(data.test_mode))
+                .catch(e => console.error(e));
+        }
+
+        function setVoiceMode(isTestMode) {
+            fetch('/api/test_mode', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({test_mode: isTestMode})
+            })
+            .then(r => r.json())
+            .then(data => updateModeUI(data.test_mode));
+        }
+
+        function updateModeUI(isTestMode) {
+            let btnCartesia = document.getElementById("btn-mode-cartesia");
+            let btnTest = document.getElementById("btn-mode-test");
+            let badge = document.getElementById("mode-badge");
+            let desc = document.getElementById("mode-desc");
+            if (isTestMode) {
+                if (btnCartesia) { btnCartesia.className = "secondary"; }
+                if (btnTest) { btnTest.className = "btn-success"; }
+                if (badge) { badge.innerText = "Free MS Neural"; badge.className = "badge status-online"; }
+                if (desc) desc.innerText = "Free Microsoft Neural voices (Neerja, Swara, Dhwani, Aarohi). Zero credits.";
+            } else {
+                if (btnCartesia) { btnCartesia.className = ""; }
+                if (btnTest) { btnTest.className = "secondary"; }
+                if (badge) { badge.innerText = "Cartesia Sonic"; badge.className = "badge status-active"; }
+                if (desc) desc.innerText = "Cartesia Sonic (Skylar / Isha / Sindhu) ~500ms latency.";
+            }
+        }
+        loadTestMode();
+
+        function renderMemoriesData(data) {
+            if (!data) return;
+            let allItems = [];
+            if (data.user_name) {
+                allItems.push(`👤 Registered User: <strong>${data.user_name}</strong>`);
+            }
+            if (data.memories && Array.isArray(data.memories)) {
+                allItems.push(...data.memories);
+            }
+            if (data.notes && Array.isArray(data.notes)) {
+                allItems.push(...data.notes);
+            }
+            let el = document.getElementById("memory-notes");
+            if (el) {
+                if (allItems.length === 0) {
+                    el.innerHTML = "<span style='color: #64748b;'>No memories stored yet. Say: \"Alexa, remember that...\"</span>";
+                } else {
+                    el.innerHTML = allItems.map(n => `<div style='padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.06); color: #f1f5f9;'>💡 ${n}</div>`).join("");
+                }
+            }
+        }
+
+        function loadMemories() {
+            fetch('/api/memory')
+                .then(r => r.json())
+                .then(data => renderMemoriesData(data))
+                .catch(e => console.error(e));
+        }
+        loadMemories();
+
+        function triggerMic() {
+            let btn = document.getElementById("btn-force-mic");
+            if (btn) btn.innerText = "⏳ Starting...";
+            fetch('/start')
+                .then(r => r.text())
+                .then(() => {
+                    if (btn) btn.innerText = "✅ Triggered!";
+                    setTimeout(() => { if (btn) btn.innerText = "🎤 Force Mic"; }, 2000);
+                });
+        }
+
+        function testVoice() {
+            fetch('/api/test_voice').then(r => r.text()).then(t => alert(t));
+        }
+
+        function interruptAudio() {
+            fetch('/api/interrupt', {method: 'POST'});
+        }
+    </script>
+</body>
+</html>
+"""
+    initial_stt = last_stt_text if last_stt_text else "Waiting for speech..."
+    initial_ai = last_ai_text if last_ai_text else "Waiting for query..."
+    html = html.replace('<div id="stt" class="log">Waiting for speech...</div>', f'<div id="stt" class="log">{initial_stt}</div>')
+    html = html.replace('<div id="ai" class="log">Waiting for query...</div>', f'<div id="ai" class="log">{initial_ai}</div>')
+    return web.Response(text=html, content_type='text/html')
+
+async def force_start(request):
+    """Manually triggers voice pipeline on ESP32 without speaking wake word."""
+    global button_key_cache
+    if not is_connected():
+        success = await ensure_connected()
+        if not success:
+            return web.Response(text="ESP32 is currently offline / reconnecting.", status=503)
+            
+    try:
+        if button_key_cache is None:
+            entities, _ = await asyncio.wait_for(client.list_entities_services(), timeout=3.0)
