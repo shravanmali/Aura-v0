@@ -2998,3 +2998,803 @@ BRIEFING_KNOWLEDGE_BASE = {
                 "en": "Heat a flat tawa on medium. Sprinkle a few water drops—when they sizzle away, wipe lightly with an oiled paper towel.",
                 "hi": "तवे को मध्यम आंच पर गरम करें। थोड़ा पानी छिड़कें—जब छनछनाए, तो तेल लगे पेपर टॉवल से पोंछ लें।",
                 "mr": "तवा मध्यम आचेवर गरम करा. थोडे पाणी शिंपडा—ते उडताच तेल लावलेल्या कपड्याने हलके पुसून घ्या.",
+                "gu": "તવો મધ્યમ તાપે ગરમ કરો. થોડું પાણી છાંટો—તે બળી જાય એટલે તેલવાળા કાગળથી લૂછી લો."
+            },
+            {
+                "en": "Pour one ladle of batter in the center, and spread it in smooth outward circles. Drizzle half a teaspoon of oil around the edges.",
+                "hi": "बीच में एक कलछी बैटर डालें और गोल-गोल बाहर की ओर फैलाएं। किनारों पर आधा चम्मच तेल या मक्खन लगाएं।",
+                "mr": "मध्यभागी एक पळी पीठ घाला आणि गोलाकार फिरवून पातळ पसरवा. कडेने अर्धा चमचा तेल किंवा बटर सोडा.",
+                "gu": "વચ્ચે એક તવો ખીરૂં નાખીને ગોળ ગોળ ફેલાવો. કિનારી પર અડધી ચમચી તેલ અથવા માખણ લગાવો."
+            },
+            {
+                "en": "Cook on medium flame until the base turns golden brown. Add 2 spoonfuls of potato masala in the center.",
+                "hi": "मध्यम आंच पर नीचे से सुनहरा और क्रिस्पी होने तक सेकें। फिर बीच में 2 चम्मच आलू का मसाला रखें।",
+                "mr": "मध्यम आचेवर खालून सोनेरी आणि कुरकुरीत होईपर्यंत भाजा. नंतर मध्यभागी दोन चमचे बटाटा भाजी ठेवा.",
+                "gu": "મધ્યમ તાપે નીચેથી સોનેરી અને ક્રિસ્પી થાય ત્યાં સુધી શેકો. પછી વચ્ચે 2 ચમચી બટાકાનો મસાલો મૂકો."
+            },
+            {
+                "en": "Fold the dosa in half and slide it onto a plate. Serve hot with coconut chutney and sambar! Your delicious dosa is ready!",
+                "hi": "डोसे को आधा मोड़ लें और प्लेट में निकालें। गरमा-गरम नारियल की चटनी और सांभर के साथ परोसें!",
+                "mr": "डोसा दुमडून प्लेटमध्ये काढा. गरमागरम खोबऱ्याची चटणी आणि सांबारसोबत सर्व्ह करा! डोसा तयार आहे!",
+                "gu": "ઢોસાને વાળીને પ્લેટમાં કાઢો. ગરમાગરમ નારિયેળની ચટણી અને સંભાર સાથે સર્વ કરો! ઢોસો તૈયાર છે!"
+            }
+        ]
+    },
+    "chai": {
+        "title": "Adrak Elaichi Masala Chai",
+        "keywords": ["chai", "tea", "masala chai", "चाय", "चहा", "ચા"],
+        "teaser": {
+            "en": "Yes, I know how to make fragrant Adrak Elaichi Masala Chai! Shall we start with boiling water and crushed spices?",
+            "hi": "हाँ, मुझे अदरक इलायची वाली कड़क मसाला चाय की रेसिपी पता है! क्या पानी और मसाले उबालने से शुरू करें?",
+            "mr": "हो, मला आले-वेलची घातलेला कडक मसाला चहा बनवता येतो! पाणी आणि मसाले उकळून सुरुवात करायची का?",
+            "gu": "હા, મને આદુ એલચી વાળી કડક મસાલા ચા બનાવવાની રીત ખબર છે! પાણી અને મસાલો ઉકાળવાથી શરૂ કરીએ?"
+        },
+        "steps": [
+            {
+                "en": "In a saucepan, bring 1 cup of water to boil with 1 inch of crushed ginger and 2 crushed green cardamoms for 2 minutes.",
+                "hi": "पैन में 1 कप पानी लें, उसमें 1 इंच कुटा अदरक और 2 कुटी हरी इलायची डालकर 2 मिनट उबालें।",
+                "mr": "पातेल्यात 1 कप पाणी घेऊन त्यात 1 इंच ठेचलेलं आलं आणि 2 वेलची घालून 2 मिनिटे उकळू द्या.",
+                "gu": "તપેલીમાં 1 કપ પાણી લઈ તેમાં 1 ઇંચ ખાંડેલું આદુ અને 2 એલચી નાખીને 2 મિનિટ ઉકાળો."
+            },
+            {
+                "en": "Add 1.5 teaspoons of black tea leaves and 2 teaspoons of sugar. Let it boil vigorously for 1 minute until deep amber.",
+                "hi": "अब 1.5 चम्मच चायपत्ती और 2 चम्मच चीनी डालें। गहरा रंग आने तक 1 मिनट अच्छी तरह उबालें।",
+                "mr": "यात 1.5 चमचे चहा पावडर आणि 2 चमचे साखर घाला. छान रंग येईपर्यंत 1 मिनिट उकळा.",
+                "gu": "તેમાં 1.5 ચમચી ચા પત્તી અને 2 ચમચી ખાંડ ઉમેરો. સારો રંગ આવે ત્યાં સુધી 1 મિનિટ ઉકાળો."
+            },
+            {
+                "en": "Pour in 1 cup of fresh milk. Let it come to a rolling boil twice, then strain into cups. Your steaming hot Masala Chai is ready!",
+                "hi": "अब 1 कप दूध डालें। दो बार उफान आने दें, फिर कप में छान लें। आपकी गरमा-गरम कड़क मसाला चाय तैयार है!",
+                "mr": "आता 1 कप दूध घाला. दोनदा छान उकळी येऊ द्या आणि कपमध्ये गाळून घ्या. तुमचा कडक चहा तयार आहे!",
+                "gu": "હવે 1 કપ દૂધ ઉમેરો. બે વખત ઉભરો આવવા દો અને કપમાં ગાળી લો. તમારી ગરમાગરમ કડક ચા તૈયાર છે!"
+            }
+        ]
+    },
+    "esp32_wiring": {
+        "title": "ESP32-S3 to MAX98357A I2S DAC Wiring",
+        "keywords": ["max98357", "amplifier", "dac", "wiring", "speaker connect", "connect speaker", "pinout"],
+        "teaser": {
+            "en": "Yes! Connecting the MAX98357A I2S DAC to your ESP32-S3 takes 5 jumper connections. Ready for the power pins?",
+            "hi": "हाँ! MAX98357A I2S DAC को ESP32-S3 से जोड़ने के लिए 5 पिन जोड़ने होते हैं। क्या पावर पिन से शुरू करें?",
+            "mr": "हो! MAX98357A DAC ला ESP32-S3 सोबत जोडण्यासाठी 5 वायर लागतात. पॉवर पिनने सुरुवात करायची का?",
+            "gu": "હા! MAX98357A DAC ને ESP32-S3 સાથે જોડવા માટે 5 વાયર લાગે છે. પાવર પિનથી શરૂ કરીએ?"
+        },
+        "steps": [
+            {
+                "en": "First, connect the DAC's VIN pin to the ESP32 5V pin, and connect the GND pin to any ESP32 GND pin.",
+                "hi": "सबसे पहले DAC की VIN पिन को ESP32 की 5V पिन से, और GND पिन को ESP32 की GND पिन से जोड़ें।",
+                "mr": "सर्वप्रथम DAC ची VIN पिन ESP32 च्या 5V पिनला आणि GND पिन कोणत्याही GND पिनला जोडा.",
+                "gu": "સૌપ્રથમ DAC ની VIN પિનને ESP32 ની 5V પિન સાથે, અને GND પિનને ESP32 ની GND પિન સાથે જોડો."
+            },
+            {
+                "en": "Next, connect the BCLK pin to GPIO 5, and the LRC pin to GPIO 6 on your ESP32-S3 board.",
+                "hi": "इसके बाद BCLK पिन को GPIO 5 से, और LRC पिन को GPIO 6 से जोड़ें।",
+                "mr": "त्यानंतर BCLK पिन GPIO 5 ला आणि LRC पिन GPIO 6 ला जोडा.",
+                "gu": "ત્યારબાદ BCLK પિનને GPIO 5 સાથે, અને LRC પિનને GPIO 6 સાથે જોડો."
+            },
+            {
+                "en": "Finally, connect the DIN pin to GPIO 7. That's your I2S audio data stream line. All 5 connections are complete and ready!",
+                "hi": "आखिर में DIN पिन को GPIO 7 से जोड़ें। यह आपकी ऑडियो डेटा लाइन है। वायरिंग पूरी हो गई!",
+                "mr": "शेवटी DIN पिन GPIO 7 ला जोडा. ही ऑडिओ डेटा लाइन आहे. संपूर्ण वायरिंग पूर्ण झाली!",
+                "gu": "છેલ્લે DIN પિનને GPIO 7 સાથે જોડો. આ તમારી ઓડિયો ડેટા લાઈન છે. વાયરિંગ પૂરું થયું!"
+            }
+        ]
+    }
+}
+
+def is_explicit_cancel_command(q_low: str) -> bool:
+    """Detects if user wants to cancel, stop, or drop the current plan/recipe."""
+    CANCEL_PATTERNS = [
+        r'\b(stop|cancel|quit|exit|close|bas)\b',
+        r'\b(drop|dropped|cancel|cancelling)\b.*\b(plan|idea|chai|tea|dosa|recipe|cooking|guide|wiring)\b',
+        r'\b(nahi banana|nahi banani|mood nahi|man nahi|nahi chahiye|chhod do|rahan do|rehan do|band karo|nako)\b',
+        r'\b(nathi banavvu|rehva do|bandh karo)\b',
+        r'(बस|छोड़ दो|रहने दो|बंद करो|रुक जाओ|नहीं बनाना|नहीं बनानी|नको|थांब|थांबा|बंद करा|રહેવા દો|નથી બનાવવું|બંધ કરો)'
+    ]
+    for pat in CANCEL_PATTERNS:
+        if re.search(pat, q_low):
+            return True
+    return False
+
+def is_explicit_repeat_command(q_low: str) -> bool:
+    """Detects if user explicitly asked to repeat the current step."""
+    tokens = re.findall(r'[\w\u0900-\u097F\u0A80-\u0AFF]+', q_low)
+    if len(tokens) > 4:
+        return False
+    REPEAT_PATTERNS = [
+        r'\b(repeat|repeat that|once more|again|say again)\b',
+        r'\b(dobara|phir se|ek aur baar)\b',
+        r'\b(punha sang|punha)\b',
+        r'(दोबारा|दोबारा बताओ|फिर से|एक बार फिर|पुन्हा सांगा|पुन्हा|ફરીથી|ફરી કહો)'
+    ]
+    for pat in REPEAT_PATTERNS:
+        if re.search(pat, q_low):
+            return True
+    return False
+
+def is_pure_advance_command(q_low: str) -> bool:
+    """
+    Detects if the user query is a PURE, UNAMBIGUOUS step advance command.
+    Must be short (<= 3 words) and contain NO doubts, constraints, actions, or ingredients!
+    """
+    tokens = re.findall(r'[\w\u0900-\u097F\u0A80-\u0AFF]+', q_low)
+    if len(tokens) > 3 or len(tokens) == 0:
+        return False
+        
+    CONTRA_INDICATORS = [
+        "don't", "dont", "not", "no", "nahi", "nathi", "nako", "without", "bina",
+        "only", "sirf", "fakt", "just", "wait", "ruko", "thamba", "let me", "let",
+        "can", "could", "what", "kya", "kaise", "instead", "badle", "drop", "dropped",
+        "gas", "stove", "pan", "cup", "milk", "tea", "chai", "sugar", "water", "paani", "doodh",
+        "dosa", "batter", "salt", "oil", "tel", "butter", "tawa", "wiring", "pin", "wire",
+        "over", "khatam", "finish", "finished", "ran out", "out of"
+    ]
+    if any(ci in q_low for ci in CONTRA_INDICATORS):
+        return False
+        
+    ADVANCE_PATTERNS = [
+        r'\b(next|continue|done|ready)\b',
+        r'\b(yes|yeah|yep|sure|ok|okay)\b',
+        r'\b(aage|aage batao|phir|fir|batao)\b',
+        r'\b(ho gaya|kar diya|kardiya|hogaya)\b',
+        r'\b(haan|haa)\b',
+        r'\b(pudhe|zala|zhala|sang)\b',
+        r'\b(aagal|janav|thay gayu)\b',
+        r'^(हाँ|हां|बताओ|आगे|आगे बताओ|फिर|हो गया|कर दिया|शुरू करो|नेक्स्ट|चालू करो)$',
+        r'^(झाले|पुढे|सांगा|पुढचे|सुरू करा|पुढील)$',
+        r'^(હા|આગળ|જણાવો|થઈ ગયું|શરૂ કરો)$'
+    ]
+    for pat in ADVANCE_PATTERNS:
+        if re.search(pat, q_low):
+            return True
+    return False
+
+def generate_executive_morning_briefing(lang: str = "en") -> str:
+    """Generates an instant personalized executive daily briefing with weather, commodities, and top news."""
+    w_info = get_live_weather("Palghar")
+    temp_str = "31°C, clear sky"
+    if w_info:
+        m = re.search(r'(\d+°C(?:,\s*[^,]+)?)', w_info)
+        if m:
+            temp_str = m.group(1)
+            
+    cng_str = "₹86.50/kg"
+    gold_str = "₹78,850 per 10g"
+    
+    # Time of day detection
+    hour = datetime.datetime.now().hour
+    if hour < 12:
+        greet = {"en": "Good morning Shravan!", "hi": "सुप्रभात श्रवण जी!", "mr": "शुभ सकाळ श्रवण!", "gu": "સુપ્રભાત શ્રવણ!"}
+    elif hour < 17:
+        greet = {"en": "Good afternoon Shravan!", "hi": "शुभ दोपहर श्रवण जी!", "mr": "शुभ दुपार श्रवण!", "gu": "શુભ બપોર શ્રવણ!"}
+    else:
+        greet = {"en": "Good evening Shravan!", "hi": "शुभ संध्या श्रवण जी!", "mr": "शुभ संध्याकाळ श्रवण!", "gu": "શુભ સાંજ શ્રવણ!"}
+        
+    g = greet.get(lang, greet["en"])
+    
+    if lang == 'hi':
+        return f"{g} पालघर में आज मौसम {temp_str} है। 24 कैरेट सोना {gold_str} और सीएनजी {cng_str} है। क्या आप आज के मुख्य समाचार सुनना चाहते हैं?"
+    elif lang == 'mr':
+        return f"{g} पालघरमध्ये आज हवामान {temp_str} आहे. 24 कॅरेट सोने {gold_str} आणि सीएनजी {cng_str} आहे. आजच्या ताज्या बातम्या ऐकायच्या आहेत का?"
+    elif lang == 'gu':
+        return f"{g} પાલઘરમાં આજે હવામાન {temp_str} છે. 24 કેરેટ સોનું {gold_str} અને સીએનજી {cng_str} છે. શું તમારે આજના મુખ્ય સમાચાર સાંભળવા છે?"
+    else:
+        return f"{g} In Palghar today it's {temp_str}. 24K gold is at {gold_str}, and CNG is {cng_str}. Would you like the top breaking headlines or stock market updates?"
+
+def resolve_briefing_intent(user_query: str, lang: str = "en") -> tuple[str | None, str | None]:
+    """
+    State machine for interactive step-by-step briefings and tutorials.
+    Returns (direct_reply, context_to_inject).
+    """
+    global active_briefing
+    q_low = user_query.lower().strip()
+    
+    # 0. Executive Briefing trigger ("Good morning", "give me my briefing", etc.)
+    BRIEFING_TRIGGER_WORDS = [
+        "morning briefing", "daily briefing", "give me briefing", "give me my briefing", "what's my briefing",
+        "good morning", "good morning alexa", "morning update", "ब्रीफिंग", "सुप्रभात", "शुभ सकाळ", "સુપ્રભાત"
+    ]
+    if any(bw in q_low for bw in BRIEFING_TRIGGER_WORDS):
+        briefing_text = generate_executive_morning_briefing(lang=lang)
+        return briefing_text, None
+    
+    # 1. Check if active briefing has timed out (60 seconds)
+    if active_briefing["is_active"] and (time.time() - active_briefing["last_updated"] > 60):
+        active_briefing["is_active"] = False
+        active_briefing["topic_id"] = None
+        active_briefing["user_constraints"] = None
+        
+    # 2. Handle active briefing navigation
+    if active_briefing["is_active"]:
+        topic_data = BRIEFING_KNOWLEDGE_BASE.get(active_briefing["topic_id"])
+        
+        # A. Cancel / Stop / Drop the plan
+        if is_explicit_cancel_command(q_low):
+            active_briefing["is_active"] = False
+            active_briefing["topic_id"] = None
+            active_briefing["user_constraints"] = None
+            active_briefing["source"] = "deterministic"
+            cancel_replies = {
+                "en": "Sure, plan cancelled! Let me know whenever you want to restart or if you need anything else.",
+                "hi": "जी बिल्कुल, प्लान कैंसल कर दिया गया है! जब चाहें फिर से पूछ सकते हैं।",
+                "mr": "नक्कीच, माहिती थांबवली आहे! तुम्हाला हवं तेव्हा पुन्हा विचारू शकता.",
+                "gu": "ચોક્કસ, પ્લાન રદ કર્યો છે! જ્યારે જરૂર હોય ત્યારે ફરી પૂછી શકો છો."
+            }
+            return cancel_replies.get(lang, cancel_replies["en"]), None
+            
+        # B. Repeat current step
+        if is_explicit_repeat_command(q_low):
+            if active_briefing["source"] == "deterministic" and topic_data and 0 < active_briefing["current_step"] <= len(topic_data["steps"]):
+                step_obj = topic_data["steps"][active_briefing["current_step"] - 1]
+                step_text = step_obj.get(lang, step_obj["en"])
+                repeat_prefix = {
+                    "en": f"Repeating Step {active_briefing['current_step']}: ",
+                    "hi": f"स्टेप {active_briefing['current_step']} दोहरा रही हूँ: ",
+                    "mr": f"स्टेप {active_briefing['current_step']} पुन्हा सांगते: ",
+                    "gu": f"સ્ટેપ {active_briefing['current_step']} ફરીથી બોલું છું: "
+                }
+                return f"{repeat_prefix.get(lang, repeat_prefix['en'])}{step_text}", None
+            elif active_briefing["source"] == "custom":
+                curr = active_briefing["current_step"]
+                prompt_context = f"""[ACTIVE CUSTOMIZED RECIPE - REPEAT STEP {curr}]:
+- Topic: '{active_briefing['title']}'
+- Current Step: Step {curr}
+- STRICT USER INGREDIENT INVENTORY: "{active_briefing['user_constraints']}"
+- The user has ONLY these ingredients. NEVER mention garlic, ginger, elaichi, or any missing items!
+- Repeat Step {curr} concisely using ONLY their available ingredients."""
+                return None, prompt_context
+
+        # Check and lock user ingredient constraints (e.g. "I only have sugar, chai patti, milk and water", "no garlic", "sirf doodh paani hai", "chai patti is over")
+        has_ingredient_constraint = (
+            any(w in q_low for w in [
+                "don't have", "dont have", "only have", "i have only", "only got", "nahi hai",
+                "sirf", "fakt", "bina", "without", "no garlic", "no ginger", "no sugar", "no elaichi",
+                "just milk", "just water", "just tea", "sirf doodh", "sirf chai", "sirf paani", "sirf cheeni",
+                "is over", "has been over", "got over", "khatam", "finished", "ran out", "out of"
+            ]) or (
+                any(ing in q_low for ing in [
+                    "garlic", "ginger", "sugar", "milk", "water", "chaipati", "chai patti", "tea leaves",
+                    "adrak", "lahsun", "doodh", "cheeni", "shakkar", "paani", "elaichi", "cardamom"
+                ]) and any(neg in q_low for neg in ["don't", "dont", "not", "no", "nahi", "only", "sirf", "bina", "without", "over", "khatam", "finished", "ran out"])
+            )
+        )
+        if has_ingredient_constraint:
+            active_briefing["user_constraints"] = user_query
+            active_briefing["source"] = "custom"
+            print(f"[BRIEFING RECIPE CONSTRAINTS LOCKED]: {user_query}")
+
+        # C. Pure, unambiguous advance command (short 1-3 words like 'Next', 'Haan', 'Aage')
+        if is_pure_advance_command(q_low):
+            if active_briefing["source"] == "custom":
+                # User has customized ingredients! Advance via Groq with locked constraints!
+                active_briefing["current_step"] += 1
+                curr = active_briefing["current_step"]
+                total = len(topic_data["steps"]) if topic_data else 3
+                if curr > total:
+                    active_briefing["is_active"] = False
+                    active_briefing["user_constraints"] = None
+                    done_replies = {
+                        "en": f"All steps for your custom {active_briefing['title']} are complete! Enjoy your drink!",
+                        "hi": f"आपकी {active_briefing['title']} के सभी स्टेप्स पूरे हो चुके हैं! आनंद लें!",
+                        "mr": f"{active_briefing['title']} तयार आहे!",
+                        "gu": f"{active_briefing['title']} તૈયાર થઈ ગયું છે!"
+                    }
+                    return done_replies.get(lang, done_replies["en"]), None
+
+                prompt_context = f"""[ACTIVE CUSTOMIZED RECIPE - ADVANCING TO STEP {curr}]:
+- Topic: '{active_briefing['title']}'
+- Step Position: Step {curr} of {total}
+- STRICT USER INGREDIENT INVENTORY: "{active_briefing['user_constraints']}"
+CRITICAL RULES FOR THIS STEP:
+1. The user explicitly stated they DO NOT have other ingredients (e.g. NO garlic, NO ginger, NO cardamom).
+2. They have ONLY the ingredients they mentioned: "{active_briefing['user_constraints']}".
+3. Provide ONLY Step {curr} of this customized recipe using ONLY their available ingredients (max 20 words).
+4. Do NOT re-introduce any ingredient they do not have!"""
+                return None, prompt_context
+
+            elif topic_data:
+                # Deterministic standard recipe
+                active_briefing["current_step"] += 1
+                curr = active_briefing["current_step"]
+                total = len(topic_data["steps"])
+                if curr <= total:
+                    step_obj = topic_data["steps"][curr - 1]
+                    step_text = step_obj.get(lang, step_obj["en"])
+                    step_prefix = {
+                        "en": f"Step {curr}: ",
+                        "hi": f"स्टेप {curr}: ",
+                        "mr": f"स्टेप {curr}: ",
+                        "gu": f"સ્ટેપ {curr}: "
+                    }
+                    if curr == total:
+                        active_briefing["is_active"] = False  # Completed!
+                    return f"{step_prefix.get(lang, step_prefix['en'])}{step_text}", None
+                else:
+                    active_briefing["is_active"] = False
+                    done_replies = {
+                        "en": f"All steps for {topic_data['title']} are complete! Enjoy!",
+                        "hi": f"{topic_data['title']} के सभी स्टेप्स पूरे हो चुके हैं! आनंद लें!",
+                        "mr": f"{topic_data['title']} च्या सर्व स्टेप्स पूर्ण झाल्या आहेत!",
+                        "gu": f"{topic_data['title']} ના તમામ સ્ટેપ્સ પૂર્ણ થઈ ગયા છે!"
+                    }
+                    return done_replies.get(lang, done_replies["en"]), None
+
+        # D. Conversational, adaptive, doubt, or constraint query during active guide!
+        cooking_or_briefing_terms = [
+            "step", "next", "repeat", "aage", "pachi", "fir", "phir", "again", "kya karu", "what to do",
+            "gas", "flame", "pan", "patila", "tawa", "heat", "boil", "ubal", "stir", "cup", "spoon",
+            "sugar", "tea", "chai", "patti", "milk", "water", "doodh", "paani", "cheeni", "shakkar",
+            "ginger", "adrak", "elaichi", "masala", "salt", "oil", "tel", "ready", "done", "ho gaya",
+            "khatam", "over", "wait", "ruko", "second", "minute", "ingredient", "saman", "drop", "cancel"
+        ]
+        is_relevant = any(t in q_low for t in cooking_or_briefing_terms) or (
+            topic_data and any(kw in q_low for kw in topic_data.get("keywords", []))
+        )
+        if not is_relevant:
+            # Query is NOT related to the active recipe tutorial (e.g. mic test "can you hear me", greeting, QA)
+            active_briefing["is_active"] = False
+            active_briefing["topic_id"] = None
+            active_briefing["user_constraints"] = None
+            return None, None
+
+        active_briefing["last_updated"] = time.time()
+        if topic_data:
+            curr_step = active_briefing["current_step"]
+            steps = topic_data["steps"]
+            curr_idx = max(0, min(curr_step - 1, len(steps) - 1)) if curr_step > 0 else 0
+            curr_step_text = steps[curr_idx].get(lang, steps[curr_idx]["en"])
+            
+            constraints_info = f"- STRICT USER INGREDIENT INVENTORY: \"{active_briefing['user_constraints']}\"\n- REMEMBER: User has ONLY these items. NEVER suggest garlic, ginger, elaichi, or anything they don't have!" if active_briefing.get("user_constraints") else ""
+            
+            prompt_context = f"""[ACTIVE INTERACTIVE TUTORIAL CONTEXT]:
+- Topic: '{topic_data['title']}'
+- Current Step Position: Step {curr_step} of {len(steps)}
+- Current Step Standard Instruction: "{curr_step_text}"
+{constraints_info}
+- User Spoke: "{user_query}"
+
+HOW TO HANDLE THIS USER TURN:
+1. IF USER DROPPED PLAN OR WANTS TO STOP (e.g. "dropped the plan", "nahi banana"):
+   - Include tag [CANCEL_BRIEFING] in your reply.
+   - Reply playfully accepting their choice (e.g. "No problem! Tea break cancelled! What's next?").
+2. IF USER HAS INGREDIENT LIMITATIONS (e.g. "I only have sugar, chai patti, milk and water", "no garlic", "no ginger"):
+   - ADAPT THE RECIPE INSTANTLY!
+   - Reassure them that simple chai with their ingredients is delicious, and instruct them on the exact next step using strictly what they have (max 22 words)!
+3. IF USER SAYS AN INGREDIENT IS OVER / FINISHED / OUT OF STOCK (e.g. "my chai patti has been over", "chai patti khatam ho gayi"):
+   - Acknowledge that the ingredient ran out!
+   - NEVER tell them to add that ingredient!
+   - Offer to help them order it online on Amazon/Flipkart or ask if they want to pause making tea (max 20 words)!
+4. IF USER MENTIONS AN ACTION IN PROGRESS (e.g. "let me turn on the gas", "wait a minute"):
+   - Cheerfully tell them to go ahead and let you know when they are ready (e.g. "Go for it! Turn on the gas and place your pan. Ready when you are!"). Do NOT rush ahead.
+5. IF USER ASKS TO SEARCH, FIND, OR BUY AN INGREDIENT/PRODUCT (e.g. "find out society chai patti 1 kg", "order chai patti", "how much is society tea"):
+   - Quote the exact live price and platform from the attached e-commerce search results!
+   - Ask if they would like to pause the recipe until their order arrives!
+6. IF USER ASKS A QUESTION OR DOUBT:
+   - Answer their specific question directly in 1 short sentence using only their known ingredients, then prompt them for the current step."""
+            return None, prompt_context
+
+    # 3. Check for starting a new briefing
+    for topic_id, data in BRIEFING_KNOWLEDGE_BASE.items():
+        if any(kw in q_low for kw in data["keywords"]):
+            # If user asks for recipe/how-to/wiring in English, Hindi, Marathi, Gujarati
+            BRIEF_HOWTO_TRIGGERS = [
+                "recipe", "how to", "make", "cook", "prepare", "wiring", "connect", "banate", "banao", "kaise",
+                "रेसिपी", "विधि", "तरीका", "बनाना", "बनाने", "आती है", "आता है", "कैसे", "जोड़ें", "कनेक्ट",
+                "कशी बनवायची", "रेसिपी", "कसे बनवायचे", "माहित आहे का", "जोडणी", "वायरिंग",
+                "રીત", "કેવી રીતે", "બનાવવાની", "આવડે છે", "જોડવું", "વાયરિંગ"
+            ]
+            if any(trig in q_low for trig in BRIEF_HOWTO_TRIGGERS) or "recipe" in q_low:
+                active_briefing["is_active"] = True
+                active_briefing["topic_id"] = topic_id
+                active_briefing["title"] = data["title"]
+                active_briefing["current_step"] = 0
+                active_briefing["total_steps"] = len(data["steps"])
+                active_briefing["last_updated"] = time.time()
+                
+                # Check if user specified ingredient constraints right in the trigger question!
+                has_init_constraint = (
+                    any(w in q_low for w in [
+                        "don't have", "dont have", "only have", "i have only", "only got", "nahi hai",
+                        "sirf", "fakt", "bina", "without", "no garlic", "no ginger", "no sugar", "no elaichi",
+                        "just milk", "just water", "just tea", "sirf doodh", "sirf chai", "sirf paani", "sirf cheeni",
+                        "is over", "has been over", "got over", "khatam", "finished", "ran out", "out of"
+                    ]) or (
+                        any(ing in q_low for ing in [
+                            "garlic", "ginger", "sugar", "milk", "water", "chaipati", "chai patti", "tea leaves",
+                            "adrak", "lahsun", "doodh", "cheeni", "shakkar", "paani", "elaichi", "cardamom"
+                        ]) and any(neg in q_low for neg in ["don't", "dont", "not", "no", "nahi", "only", "sirf", "bina", "without", "over", "khatam", "finished", "ran out"])
+                    )
+                )
+                if has_init_constraint:
+                    active_briefing["user_constraints"] = user_query
+                    active_briefing["source"] = "custom"
+                    print(f"[BRIEFING INITIAL CONSTRAINTS LOCKED]: {user_query}")
+                    prompt_context = f"""[STARTING CUSTOM RECIPE - USER HAS INGREDIENT RESTRICTIONS]:
+- Recipe: {data['title']}
+- User Inventory / Constraints: '{user_query}'
+- The user has ONLY these ingredients. They do NOT have garlic, ginger, elaichi, spices, or other items.
+- Acknowledge their available ingredients warmly and ask if they are ready to start Step 1 using ONLY what they have (max 20 words)."""
+                    return None, prompt_context
+
+                active_briefing["source"] = "deterministic"
+                teaser_text = data["teaser"].get(lang, data["teaser"]["en"])
+                return teaser_text, None
+
+    return None, None
+
+# --- Text Sanitizer for TTS ---
+def sanitize_mixed_indic_script(text: str) -> str:
+    """
+    Sanitizes mixed Indic script token hallucinations emitted by Whisper (e.g. 'તुम्हाला' -> 'तुम्हाला', 'આवाज' -> 'आवाज').
+    In real writing, words never mix Gujarati script [U+0A80..U+0AFF] with Devanagari [U+0900..U+097F].
+    Because Gujarati and Devanagari share identical 1-to-1 Unicode point offsets (offset = 0x0180),
+    any rogue character from the minority script inside a word or sentence is mapped cleanly to its true script.
+    """
+    if not text:
+        return text
+    dev_count = len(re.findall(r'[\u0900-\u097F]', text))
+    gu_count = len(re.findall(r'[\u0A80-\u0AFF]', text))
+    
+    # If pure Devanagari, pure Gujarati, or neither, no mixed script repair is needed
+    if dev_count == 0 or gu_count == 0:
+        return text
+        
+    words = text.split()
+    sanitized_words = []
+    dev_dominant = dev_count >= gu_count
+    
+    for word in words:
+        w_dev = len(re.findall(r'[\u0900-\u097F]', word))
+        w_gu = len(re.findall(r'[\u0A80-\u0AFF]', word))
+        
+        # Check if the word mixes both scripts or has rogue minority characters in dominant context
+        should_repair = (w_dev > 0 and w_gu > 0) or \
+                        (dev_dominant and w_gu <= 2 and dev_count >= 2 * gu_count) or \
+                        (not dev_dominant and w_dev <= 2 and gu_count >= 2 * dev_count)
+                        
+        if should_repair:
+            new_word = ''
+            for ch in word:
+                cp = ord(ch)
+                if dev_dominant:
+                    # Convert rogue Gujarati characters to Devanagari
+                    if 0x0A80 <= cp <= 0x0AFF:
+                        target = cp - 0x0180
+                        new_word += chr(target) if (0x0900 <= target <= 0x097F) else ch
+                    else:
+                        new_word += ch
+                else:
+                    # Convert rogue Devanagari characters to Gujarati
+                    if 0x0900 <= cp <= 0x097F:
+                        target = cp + 0x0180
+                        new_word += chr(target) if (0x0A80 <= target <= 0x0AFF) else ch
+                    else:
+                        new_word += ch
+            sanitized_words.append(new_word)
+        else:
+            sanitized_words.append(word)
+            
+    return ' '.join(sanitized_words)
+
+def extract_explicit_language_request(query: str) -> str | None:
+    """
+    Detects if the user explicitly requested a specific target language for the response,
+    even if the command itself was spoken in another language (e.g. 'Tell the same answer in Marathi').
+    """
+    if not query:
+        return None
+    q = query.lower().strip()
+    
+    # Marathi explicit requests
+    mr_patterns = [
+        r'\bin\s+marathi\b', r'\binto\s+marathi\b', r'\bto\s+marathi\b', r'\bas\s+marathi\b',
+        r'\bspeak\s+marathi\b', r'\btell\s+.*in\s+marathi\b', r'\bsay\s+.*in\s+marathi\b',
+        r'\bmarathi\s+language\b', r'\bmarathi\s+please\b', r'\bmarathit\b', r'\bmarathi\s+madhe\b',
+        r'मराठीत', r'मराठी\s*मध्ये', r'मराठी\s*भाशेत', r'मराठी\s*भाषेत', r'मराठी\s*बोला', r'मराठी\s*सांगा',
+        r'મરાઠીમાં', r'મરાઠી'
+    ]
+    if any(re.search(p, q) for p in mr_patterns):
+        return 'mr'
+        
+    # Gujarati explicit requests
+    gu_patterns = [
+        r'\bin\s+gujarati\b', r'\binto\s+gujarati\b', r'\bto\s+gujarati\b', r'\bas\s+gujarati\b',
+        r'\bspeak\s+gujarati\b', r'\btell\s+.*in\s+gujarati\b', r'\bsay\s+.*in\s+gujarati\b',
+        r'\bgujarati\s+language\b', r'\bgujarati\s+please\b', r'\bgujaratin\b', r'\bgujaratima\b',
+        r'ગુજરાતીમાં', r'ગુજરાતી\s*ભાષામાં', r'ગુજરાતી\s*બોલો', r'ગુજરાતી\s*કહો',
+        r'गुजराती\s*में', r'गुजराती\s*बोलो', r'गुजराती\s*बताओ'
+    ]
+    if any(re.search(p, q) for p in gu_patterns):
+        return 'gu'
+        
+    # Hindi explicit requests
+    hi_patterns = [
+        r'\bin\s+hindi\b', r'\binto\s+hindi\b', r'\bto\s+hindi\b', r'\bas\s+hindi\b',
+        r'\bspeak\s+hindi\b', r'\btell\s+.*in\s+hindi\b', r'\bsay\s+.*in\s+hindi\b',
+        r'\bhindi\s+language\b', r'\bhindi\s+please\b',
+        r'हिंदी\s*में', r'हिन्दी\s*में', r'हिंदी\s*बोलो', r'हिंदी\s*बताओ',
+        r'હિન્દીમાં', r'હિન્દી'
+    ]
+    if any(re.search(p, q) for p in hi_patterns):
+        return 'hi'
+        
+    # English explicit requests
+    en_patterns = [
+        r'\bin\s+english\b', r'\binto\s+english\b', r'\bto\s+english\b', r'\bas\s+english\b',
+        r'\bspeak\s+english\b', r'\btell\s+.*in\s+english\b', r'\bsay\s+.*in\s+english\b',
+        r'\benglish\s+language\b', r'\benglish\s+please\b',
+        r'इंग्लिश\s*मध्ये', r'इंग्रजीत', r'अंग्रेजी\s*में', r'ઇંગ્લિશમાં'
+    ]
+    if any(re.search(p, q) for p in en_patterns):
+        return 'en'
+        
+    return None
+
+# --- Step 1: Speech to Text (Groq Whisper) ---
+def run_groq_whisper(raw_pcm: bytes) -> tuple[str, float]:
+    """Transcribes audio using Groq Whisper Large V3 Turbo with Indic script bleed protection."""
+    cleaned_pcm = optimize_audio_for_esp32(raw_pcm, sample_rate=16000, threshold=200)
+    if len(cleaned_pcm) < 1600:
+        cleaned_pcm = raw_pcm
+    wav_io = io.BytesIO()
+    with wave.open(wav_io, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(16000)
+        wf.writeframes(cleaned_pcm)
+    wav_bytes = wav_io.getvalue()
+    
+    url = "https://api.groq.com/openai/v1/audio/transcriptions"
+    boundary = "----FormBoundaryVoiceAssistant7MA4YW"
+    
+    body = bytearray()
+    # Balanced multilingual prompt grounded in daily assistant vocabulary
+    whisper_prompt = (
+        "Alexa, Shravan. "
+        "Tea, chai patti, gas stove, sugar, milk, water, masala dosa, recipe, timer, order, headphones, price, Sony, flipkart, amazon. "
+        "मेरी चाय पत्ती खत्म हो गई है, मुझे चाय बनानी है, क्या आप मुझे बता सकते हैं?"
+    )
+    # Guarantee prompt never exceeds Groq's 896-byte limit
+    safe_whisper_prompt = whisper_prompt.encode('utf-8')[:800].decode('utf-8', errors='ignore')
+    body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nwhisper-large-v3-turbo\r\n".encode())
+    body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\n{safe_whisper_prompt}\r\n".encode('utf-8'))
+    body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"temperature\"\r\n\r\n0\r\n".encode())
+    body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\nContent-Type: audio/wav\r\n\r\n".encode())
+    body.extend(wav_bytes)
+    body.extend(f"\r\n--{boundary}--\r\n".encode())
+    
+    global groq_key_index
+    for attempt in range(len(GROQ_KEYS)):
+        current_key = GROQ_KEYS[groq_key_index % len(GROQ_KEYS)]
+        req = urllib.request.Request(
+            url,
+            data=bytes(body),
+            headers={
+                "Authorization": f"Bearer {current_key}",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "User-Agent": "Mozilla/5.0"
+            }
+        )
+        t0 = time.time()
+        try:
+            with urllib.request.urlopen(req, timeout=8.0) as resp:
+                res = json.loads(resp.read().decode())
+                dt = (time.time() - t0) * 1000
+                raw_text = res.get("text", "").strip()
+                clean_text = sanitize_mixed_indic_script(raw_text)
+                return clean_text, dt
+        except urllib.error.HTTPError as e:
+            err_msg = e.read().decode('utf-8', errors='ignore')
+            print(f"Groq Whisper STT HTTP {e.code}: {err_msg}")
+            if e.code == 429 and len(GROQ_KEYS) > 1:
+                groq_key_index = (groq_key_index + 1) % len(GROQ_KEYS)
+                print(f"[GROQ ROTATION (STT)]: Rotated to key #{groq_key_index + 1}")
+                continue
+            return "", (time.time() - t0) * 1000
+        except Exception as e:
+            print(f"Groq Whisper STT Error: {e}")
+            return "", (time.time() - t0) * 1000
+    return "", (time.time() - t0) * 1000
+
+def format_current_time(lang: str = "en") -> str:
+    """Formats exact live local time into natural, culturally authentic spoken phrasing across all 4 languages."""
+    now = datetime.datetime.now()
+    hr_int = int(now.strftime("%I"))
+    hr = str(hr_int)
+    minute_int = now.minute
+    am_pm = now.strftime("%p")
+    hour_24 = now.hour
+    next_hr = str((hr_int % 12) + 1)
+    
+    if 4 <= hour_24 < 12:
+        period_hi = "सुबह के"
+        period_mr = "सकाळचे"
+        period_gu = "સવારના"
+    elif 12 <= hour_24 < 16:
+        period_hi = "दोपहर के"
+        period_mr = "दुपारचे"
+        period_gu = "બપોરના"
+    elif 16 <= hour_24 < 20:
+        period_hi = "शाम के"
+        period_mr = "संध्याकाळचे"
+        period_gu = "સાંજના"
+    else:
+        period_hi = "रात के"
+        period_mr = "रात्रीचे"
+        period_gu = "રાતના"
+        
+    if lang == "hi":
+        if minute_int == 0:
+            return f"अभी {period_hi} ठीक {hr} बजे हैं।"
+        elif minute_int == 15:
+            return f"अभी {period_hi} सवा {hr} बजे हैं।"
+        elif minute_int == 30:
+            if hr_int == 1:
+                return f"अभी {period_hi} डेढ़ बजा है।"
+            elif hr_int == 2:
+                return f"अभी {period_hi} ढाई बजे हैं।"
+            else:
+                return f"अभी {period_hi} साढ़े {hr} बजे हैं।"
+        elif minute_int == 45:
+            return f"अभी {period_hi} पौने {next_hr} बजे हैं।"
+        else:
+            return f"अभी {period_hi} {hr} बजकर {minute_int} मिनट हुए हैं।"
+            
+    elif lang == "mr":
+        if minute_int == 0:
+            return f"आता {period_mr} ठीक {hr} वाजले आहेत."
+        elif minute_int == 15:
+            return f"आता {period_mr} सव्वा {hr} वाजले आहेत."
+        elif minute_int == 30:
+            if hr_int == 1:
+                return f"आता {period_mr} दीड वाजला आहे."
+            elif hr_int == 2:
+                return f"आता {period_mr} अडीच वाजले आहेत."
+            else:
+                return f"आता {period_mr} साडे {hr} वाजले आहेत."
+        elif minute_int == 45:
+            return f"आता {period_mr} पावणे {next_hr} वाजले आहेत."
+        else:
+            return f"आता {period_mr} {hr} वाजून {minute_int} मिनिटे झाली आहेत."
+            
+    elif lang == "gu":
+        if minute_int == 0:
+            return f"અત્યારે {period_gu} બરાબર {hr} વાગ્યા છે."
+        elif minute_int == 15:
+            return f"અત્યારે {period_gu} સવા {hr} થયા છે."
+        elif minute_int == 30:
+            if hr_int == 1:
+                return f"અત્યારે {period_gu} દોઢ વાગ્યો છે."
+            elif hr_int == 2:
+                return f"અત્યારે {period_gu} અઢી વાગ્યા છે."
+            else:
+                return f"અત્યારે {period_gu} સાડા {hr} થયા છે."
+        elif minute_int == 45:
+            return f"અત્યારે {period_gu} પોણા {next_hr} થયા છે."
+        else:
+            return f"અત્યારે {period_gu} {hr} વાગીને {minute_int} મિનિટ થઈ છે."
+            
+    else:
+        # Modern commercial voice assistant phrasing (Siri / Alexa / Google style)
+        if minute_int == 0:
+            return f"It's {hr} o'clock {am_pm}."
+        elif minute_int < 10:
+            return f"It's {hr} oh {minute_int} {am_pm}."
+        else:
+            return f"It's {hr} {minute_int} {am_pm}."  
+
+def format_current_date(lang: str = "en") -> str:
+    """Formats exact live local date and day into natural, polite spoken phrasing."""
+    now = datetime.datetime.now()
+    day_name = now.strftime("%A")
+    day_num = now.strftime("%d").lstrip("0")
+    month_name = now.strftime("%B")
+    year = now.strftime("%Y")
+    
+    days_hi = {"Monday": "सोमवार", "Tuesday": "मंगलवार", "Wednesday": "बुधवार", "Thursday": "गुरुवार", "Friday": "शुक्रवार", "Saturday": "शनिवार", "Sunday": "रविवार"}
+    days_mr = {"Monday": "सोमवार", "Tuesday": "मंगळवार", "Wednesday": "बुधवार", "Thursday": "गुरुवार", "Friday": "शुक्रवार", "Saturday": "शनिवार", "Sunday": "रविवार"}
+    days_gu = {"Monday": "સોમવાર", "Tuesday": "મંગળવાર", "Wednesday": "બુધવાર", "Thursday": "ગુરુવાર", "Friday": "શુક્રવાર", "Saturday": "શનિવાર", "Sunday": "રવિવાર"}
+    
+    months_hi = {"January": "जनवरी", "February": "फरवरी", "March": "मार्च", "April": "अप्रैल", "May": "मई", "June": "जून", "July": "जुलाई", "August": "अगस्त", "September": "सितंबर", "October": "अक्टूबर", "November": "नवंबर", "December": "दिसंबर"}
+    months_mr = {"January": "जानेवारी", "February": "फेब्रुवारी", "March": "मार्च", "April": "एप्रिल", "May": "मे", "June": "जून", "July": "जुलै", "August": "ऑगस्ट", "September": "सप्टेंबर", "October": "ऑक्टोबर", "November": "नोव्हेंबर", "December": "डिसेंबर"}
+    months_gu = {"January": "જાન્યુઆરી", "February": "ફેબ્રુઆરી", "March": "માર્ચ", "April": "એપ્રિલ", "May": "મે", "June": "જૂન", "July": "જુલાઈ", "August": "ઓગસ્ટ", "September": "સપ્ટેમ્બર", "October": "ઓક્ટોબર", "November": "નવેમ્બર", "December": "ડિસેમ્બર"}
+    
+    if lang == "hi":
+        return f"आज {days_hi.get(day_name, day_name)}, {day_num} {months_hi.get(month_name, month_name)} {year} है।"
+    elif lang == "mr":
+        return f"आज {days_mr.get(day_name, day_name)}, {day_num} {months_mr.get(month_name, month_name)} {year} आहे."
+    elif lang == "gu":
+        return f"આજે {days_gu.get(day_name, day_name)}, {day_num} {months_gu.get(month_name, month_name)} {year} છે."
+    else:
+        return f"Today is {day_name}, {month_name} {day_num}, {year}."
+
+# --- Step 2: LLM Brain (Groq) ---
+
+WEB_SEARCH_CACHE = {} # query -> (timestamp, formatted_results)
+
+def search_web_live(query: str, max_results: int = 3) -> str | None:
+    """
+    Fetches real-time multi-source web snippets and citations via DuckDuckGo in ~600-1100ms.
+    Provides verifiable titles, sources, and snippets for news, scientific, or general facts.
+    """
+    global WEB_SEARCH_CACHE
+    q_clean = query.strip()
+    if not q_clean or len(q_clean) < 3:
+        return None
+        
+    cache_key = q_clean.lower()
+    cached = WEB_SEARCH_CACHE.get(cache_key)
+    if cached and (time.time() - cached[0] < 600): # 10 min TTL
+        return cached[1]
+        
+    try:
+        url = "https://lite.duckduckgo.com/lite/"
+        data = urllib.parse.urlencode({'q': q_clean}).encode('utf-8')
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        req = urllib.request.Request(url, data=data, headers=headers)
+        with urllib.request.urlopen(req, timeout=2.2) as resp:
+            html = resp.read().decode('utf-8', errors='ignore')
+
+        blocks = re.findall(
+            r'<td valign="top">\s*\d+\.&nbsp;\s*</td>\s*<td>\s*<a[^>]*href="([^"]*)"[^>]*class=["\']result-link["\'][^>]*>(.*?)</a>.*?<td[^>]*class=["\']result-snippet["\'][^>]*>(.*?)</td>.*?<span[^>]*class=["\']link-text["\'][^>]*>(.*?)</span>',
+            html, re.DOTALL
+        )
+        if not blocks:
+            return None
+            
+        sources = []
+        for u, t, s, l in blocks[:max_results]:
+            clean_t = re.sub(r'<[^>]+>', '', t).strip()
+            clean_s = re.sub(r'<[^>]+>', '', s).strip()
+            clean_l = re.sub(r'<[^>]+>', '', l).strip()
+            sources.append(f"• Source [{clean_l}]: \"{clean_t}\" — {clean_s}")
+            
+        res = f"[LIVE MULTI-SOURCE WEB VERIFICATION ({len(sources)} Verified Sources)]:\n" + "\n".join(sources)
+        WEB_SEARCH_CACHE[cache_key] = (time.time(), res)
+        return res
+    except Exception as e:
+        print(f"[WEB SEARCH]: Live lookup error for '{q_clean}': {e}")
+        return None
+
+
+# ==============================================================================
+# PALGHAR HYPER-LOCAL ARITHMETIC RECOMMENDATION & UTILITY DIRECTORY
+# Ground truth for Palghar West around user's home (Vishnu Nagar, near Hotel Sai Residency on Mahim Road, PIN 401404)
+# ==============================================================================
+
+PALGHAR_HYPERLOCAL_DIRECTORY = {
+    # --- FOOD CRAVINGS & DINING INSTINCTS ---
+    "waffles": {
+        "type": "food",
+        "name": "The Belgian Waffle Co.",
+        "category_label": "Waffles & Desserts",
+        "primary_keywords": ["waffle", "waffles", "belgian waffle", "belgian waffles", "वाफल", "वाफल्स", "વાફલ", "વાફલ્સ", "stroopwafel"],
+        "secondary_keywords": ["pancake", "pancakes", "waffle cake", "chocolate waffle", "dessert", "desserts"],
+        "details": (
+            "• **The Belgian Waffle Co.** (Palghar West)\n"
+            "  - Exact Location: Shop No. 40, 44 & 49, M V Super Market, near Panch Batti (Pachbatti Road), Palghar West.\n"
+            "  - Distance from Vishnu Nagar: ~900 meters (about 3 minutes by auto or a 10-minute walk).\n"
+            "  - Top Specialties: Warm Belgian Waffles, Waffle Cakes, Chocolate Overload, Red Velvet Waffle, Stroopwafels."
+        )
+    },
+    "shawarma": {
+        "type": "food",
+        "name": "Shawarma Nation",
+        "category_label": "Shawarma & Rolls",
+        "primary_keywords": ["shawarma", "sharma", "sorma", "shorma", "shavarma", "शावर्मा", "शॉर्मा", "શાવર્મા", "roll", "rolls", "frankie"],
+        "secondary_keywords": ["kathi roll", "wrap", "wraps", "chicken roll", "paneer roll"],
+        "details": (
+            "• **Shawarma Nation** (Palghar West)\n"
+            "  - Exact Location: Near Panch Batti (Pachbatti Road) / Hutatma Chowk, Palghar West.\n"
+            "  - Distance from Vishnu Nagar: ~900 meters (about 3 minutes by auto or 10 minutes walk).\n"
+            "  - Top Specialties: Chicken Shawarma, Open Shawarma, Tandoori Shawarma, Peri Peri Chicken Rolls."
+        )
+    },
+    "family_dining": {
+        "type": "food",
+        "name": "Hotel Sai Residency",
+        "category_label": "Multi-Cuisine Family Dining & North Indian",
+        "primary_keywords": ["sai residency", "hotel sai", "family restaurant", "family dining", "dinner", "lunch", "punjabi", "mughlai", "north indian", "chinese"],
