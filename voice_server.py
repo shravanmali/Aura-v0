@@ -4598,3 +4598,803 @@ def stream_groq_llm(user_query: str, detected_lang: str | None = None, cadence_i
         yield (compound_reply, det_lang or "en", True, f"[LANG: {(det_lang or 'en').upper()}] {compound_reply}")
         return
     elif compound_reply and remaining_query:
+        # Case B: Mixed (Device actions executed + Knowledge query remaining!)
+        print(f"[COMPOUND MIXED EXECUTION]: Device prefix: '{compound_reply}' | Routing remaining knowledge query to Groq: '{remaining_query}'")
+        yield (compound_reply, det_lang or "en", False, f"[LANG: {(det_lang or 'en').upper()}] {compound_reply}")
+        user_query = remaining_query
+        lower_uq = user_query.lower().strip()
+
+    # --- Jio Landline Calling ---
+    call_target = parse_call_intent(user_query)
+    if call_target:
+        call_ack = handle_call_intent(call_target, lang=det_lang or "en")
+        print(f"[CALL INTENT DISPATCHED]: Target '{call_target}' -> '{call_ack}'")
+        pending_followup_intent = False
+        yield from yield_fastpath_clauses(call_ack, det_lang or "en", is_followup=False)
+        return
+
+    # --- Call Hangup ---
+    if is_hangup_command(user_query):
+        hangup_ack = handle_hangup_intent(lang=det_lang or "en")
+        print(f"[CALL HANGUP DISPATCHED]: '{hangup_ack}'")
+        pending_followup_intent = False
+        yield from yield_fastpath_clauses(hangup_ack, det_lang or "en", is_followup=False)
+        return
+
+    # --- Call Mute / Unmute ---
+    if is_unmute_command(user_query):
+        unmute_ack = handle_unmute_intent(lang=det_lang or "en")
+        print(f"[CALL UNMUTE DISPATCHED]: '{unmute_ack}'")
+        pending_followup_intent = False
+        yield from yield_fastpath_clauses(unmute_ack, det_lang or "en", is_followup=False)
+        return
+
+    if is_mute_command(user_query):
+        mute_ack = handle_mute_intent(lang=det_lang or "en")
+        print(f"[CALL MUTE DISPATCHED]: '{mute_ack}'")
+        pending_followup_intent = False
+        yield from yield_fastpath_clauses(mute_ack, det_lang or "en", is_followup=False)
+        return
+
+    # --- User Memory Commands ---
+    is_wipe_all = bool(re.search(
+        r'\b(?:delete|clear|wipe|erase|reset|remove)\s+(?:all\s+)?(?:your\s+|my\s+|the\s+)?memor(?:y|ies)\b|\bforget\s+everything\b|\breset\s+(?:all\s+)?memory\b',
+        lower_uq
+    )) or any(k in lower_uq for k in [
+        'clear all memory', 'clear memory', 'wipe your memory', 'delete all memories',
+        'delete all your memory', 'delete your memory', 'delete memory', 'wipe memory',
+        'forget everything', 'delete this memory from your mind', 'सारी मेमोरी डिलीट',
+        'सर्व मेमरी साफ', 'બધી મેમરી સાફ', 'બધું ભૂલી જાઓ', 'मेमोरी साफ', 'मेमोरी डिलीट'
+    ])
+    if is_wipe_all:
+        wipe_all_memories()
+        ack = {
+            "hi": "सारी मेमोरी साफ कर दी गई है! मेरा दिमाग अब बिल्कुल नया और खाली है।",
+            "mr": "सर्व मेमरी पूर्णपणे साफ केली आहे! माझे मन आता एकदम फ्रेश आहे.",
+            "gu": "બધી મેમરી સાફ કરી દીધી છે! હવે મારી મેમરી એકદમ નવી છે.",
+            "en": "All your memories have been wiped clean! My memory is now completely fresh."
+        }.get(det_lang, "All your memories have been wiped clean! My memory is now completely fresh.")
+        yield from yield_fastpath_clauses(ack, det_lang or "en", is_followup=False)
+        return
+
+    # Registration statements (e.g. "I have registered you on Star Dance platform", "I registered you as an assistant on transport")
+    is_registration = re.search(r'\b(?:i\s+(?:have\s+)?registered\s+you|registered\s+you\s+(?:as|on|at|in)|you\s+are\s+registered\s+(?:on|in|at))\s+(?:on\s+|in\s+|at\s+|as\s+)?([^.]+)', user_query, re.IGNORECASE)
+    if is_registration:
+        raw_platform = is_registration.group(1).strip()
+        # Extract name if included e.g. "... and my name is Shravan"
+        name_sub = re.search(r'\b(?:and\s+)?(?:my\s+name\s+is|i\s+am|mera\s+naam\s+hai|mera\s+naam)\s+([A-Za-z]+)\b', raw_platform, re.IGNORECASE)
+        if name_sub:
+            cand_name = name_sub.group(1).title()
+            if cand_name.lower() not in ['a', 'an', 'the', 'registered', 'register', 'alexa']:
+                memory_data["user_name"] = cand_name
+                print(f"[USER NAME UPDATED]: '{cand_name}'")
+        clean_platform = re.split(r'\b(?:and\s+my\s+name|and\s+i\s+am|aur\s+mera\s+naam)\b', raw_platform, flags=re.IGNORECASE)[0].strip()
+        clean_platform = re.sub(r'^[,\s!.-]+|[,\s!.-]+$', '', clean_platform)
+        saved_fact = f"You registered me on {clean_platform}."
+        
+        # Overwrite previous registration notes & memories
+        memory_data["memories"] = [m for m in memory_data.get("memories", []) if "registered" not in m.lower()]
+        memory_data["notes"] = [n for n in memory_data.get("notes", []) if "registered" not in n.lower()]
+        memory_data["memories"].append(saved_fact)
+        save_memory(memory_data)
+        
+        user_pfx = f", {memory_data['user_name']}" if memory_data.get("user_name") else ""
+        ack = {
+            "hi": f"समझ गई{user_pfx}! मैंने अपडेट कर लिया है कि आपने मुझे {clean_platform} पर रजिस्टर किया है।",
+            "mr": f"लक्षात आले{user_pfx}! मी अपडेट केले आहे की तुम्ही मला {clean_platform} वर रजिस्टर केले आहे.",
+            "gu": f"બરાબર{user_pfx}! મેં અપડેટ કરી લીધું છે કે તમે મને {clean_platform} પર રજીસ્ટર કર્યું છે.",
+            "en": f"Got it{user_pfx}! I have updated my memory that you registered me on {clean_platform}."
+        }.get(det_lang, f"Got it{user_pfx}! I have updated my memory that you registered me on {clean_platform}.")
+        yield from yield_fastpath_clauses(ack, det_lang or "en", is_followup=False)
+        return
+
+    # Inquiries about where registered (e.g. "Where did I register you?", "Do you remember where I registered you?")
+    is_ask_registration = any(k in lower_uq for k in [
+        'where did i register you', 'where did you register', 'where did you registered you',
+        'where you registered you', 'where have i registered you', 'where i registered you',
+        'where do you remember where i registered you', 'do you remember where i registered you',
+        'do you remember where i had register you', 'do you remember where i have registered you',
+        'where did i registered you', 'where am i registered', 'where did i register',
+        'कहाँ रजिस्टर किया', 'कुठे रजिस्टर केले', 'ક્યાં રજીસ્ટર કર્યું'
+    ])
+    if is_ask_registration:
+        reg_facts = [m for m in memory_data.get("memories", []) + memory_data.get("notes", []) if "registered" in m.lower()]
+        if reg_facts:
+            fact_str = reg_facts[-1].rstrip('.') + "."
+            if fact_str.lower().startswith("you registered me"):
+                ans = fact_str
+            else:
+                ans = f"You registered me on {fact_str}"
+            yield from yield_fastpath_clauses(ans, det_lang or "en", is_followup=False)
+            return
+        else:
+            ack = {
+                "hi": "आपने मुझे अभी तक नहीं बताया कि आपने मुझे कहाँ रजिस्टर किया है! आप मुझे कहाँ रजिस्टर कर रहे हैं?",
+                "mr": "तुम्ही मला अजून सांगितले नाही की तुम्ही मला कुठे रजिस्टर केले आहे!",
+                "gu": "તમે મને હજી સુધી નથી કહ્યું કે તમે મને ક્યાં રજીસ્ટર કર્યું છે!",
+                "en": "You haven't told me where you registered me yet! Where did you register me?"
+            }.get(det_lang, "You haven't told me where you registered me yet! Where did you register me?")
+            yield from yield_fastpath_clauses(ack, det_lang or "en", is_followup=False)
+            return
+
+    # Name statement (e.g. "My name is Rajesh", "I am Rajesh", "Call me Rajesh", "Change my name to Rajesh")
+    is_name_statement = re.search(r'^(?:alexa\s+)?(?:my\s+name\s+is|i\s+am|call\s+me|change\s+my\s+name\s+to|update\s+my\s+name\s+to|mera\s+naam\s+hai|mera\s+naam|maaza\s+naav)\s+([A-Za-z]+)\b', user_query, re.IGNORECASE)
+    if is_name_statement and not any(k in lower_uq for k in ['registered', 'remember', 'timer', 'alarm', 'volume']):
+        cand_name = is_name_statement.group(1).title()
+        if cand_name.lower() not in ['a', 'an', 'the', 'alexa', 'ready', 'listening', 'here', 'back']:
+            memory_data["user_name"] = cand_name
+            memory_data["notes"] = [n for n in memory_data.get("notes", []) if "name is" not in n.lower()]
+            save_memory(memory_data)
+            ack = {
+                "hi": f"नमस्ते {cand_name}! मैंने याद रख लिया है कि आपका नाम {cand_name} है।",
+                "mr": f"नमस्कार {cand_name}! मी लक्षात ठेवले आहे की तुमचे नाव {cand_name} आहे.",
+                "gu": f"નમસ્તે {cand_name}! મેં યાદ રાખી લીધું છે કે તમારું નામ {cand_name} છે.",
+                "en": f"Hello {cand_name}! I have updated your name in my memory. I will call you {cand_name}."
+            }.get(det_lang, f"Hello {cand_name}! I have updated your name in my memory. I will call you {cand_name}.")
+            yield from yield_fastpath_clauses(ack, det_lang or "en", is_followup=False)
+            return
+
+    # Inquiries about user's name (e.g. "What is my name?", "Who am I?")
+    is_ask_name = any(k in lower_uq for k in [
+        'what is my name', "what's my name", 'who am i', 'do you know my name',
+        'tell me my name', 'मेरा नाम क्या है', 'माझे नाव काय आहे', 'મારું નામ શું છે'
+    ])
+    if is_ask_name:
+        if memory_data.get("user_name"):
+            name = memory_data['user_name']
+            ack = {
+                "hi": f"आपका नाम {name} है!",
+                "mr": f"तुमचे नाव {name} आहे!",
+                "gu": f"તમારું નામ {name} છે!",
+                "en": f"Your name is {name}!"
+            }.get(det_lang, f"Your name is {name}!")
+            yield from yield_fastpath_clauses(ack, det_lang or "en", is_followup=False)
+            return
+        else:
+            ack = {
+                "hi": "आपने अभी तक मुझे अपना नाम नहीं बताया है! आपका नाम क्या है?",
+                "mr": "तुम्ही मला अजून तुमचे नाव सांगितले नाही! तुमचे नाव काय आहे?",
+                "gu": "તમે મને હજી સુધી તમારું નામ નથી કહ્યું!",
+                "en": "You haven't told me your name yet! What should I call you?"
+            }.get(det_lang, "You haven't told me your name yet! What should I call you?")
+            yield from yield_fastpath_clauses(ack, det_lang or "en", is_followup=False)
+            return
+
+    # General Remember command ("remember that X")
+    is_remember = re.search(r'\b(?:remember\s+that|remember\s+this|remember|याद\s+रखना\s+कि|याद\s+रखना|लक्षात\s+ठेव\s+की|लक्षात\s+ठेव|યાદ\s+રાખજે\s+કે|યાદ\s+રાખ)\s+(.+)', user_query, re.IGNORECASE)
+    if is_remember:
+        raw_fact = is_remember.group(1).strip()
+        name_match = re.search(r'\b(?:i\s+am|my\s+name\s+is|mera\s+naam\s+hai|mera\s+naam|maaza\s+naav)\s+([A-Z][a-zA-Z]+)\b', user_query, re.IGNORECASE)
+        if name_match:
+            user_name_found = name_match.group(1).title()
+            memory_data["user_name"] = user_name_found
+            print(f"[USER NAME CAPTURED]: '{user_name_found}'")
+            
+        saved_fact = add_user_memory(raw_fact, lang=det_lang or "en")
+        if saved_fact:
+            user_prefix = f"{memory_data['user_name']}, " if memory_data.get("user_name") else ""
+            ack = {
+                "hi": f"समझ गई {user_prefix}! मैंने याद रख लिया कि {saved_fact}",
+                "mr": f"लक्षात ठेवले {user_prefix}! मी सेव्ह केले की {saved_fact}",
+                "gu": f"બરાબર {user_prefix}! મેં યાદ રાખી લીધું કે {saved_fact}",
+                "en": f"Got it {user_prefix}! I will remember that {saved_fact.lower().rstrip('.') if saved_fact.startswith('Your') else saved_fact.rstrip('.')}."
+            }.get(det_lang, f"Got it {user_prefix}! I will remember that {saved_fact.lower().rstrip('.') if saved_fact.startswith('Your') else saved_fact.rstrip('.')}.").strip()
+            yield from yield_fastpath_clauses(ack, det_lang or "en", is_followup=False)
+            return
+
+    # General Recall command ("what do you remember")
+    is_recall_memory = any(k in lower_uq for k in [
+        'what do you remember', 'what is in your memory', 'do you remember anything',
+        'what are your memories', 'tell me my memories', 'मेरी मेमोरी में क्या है',
+        'माझ्याबद्दल काय आठवते', 'તમને મારા વિશે શું યાદ છે', 'મારી મેમરી'
+    ])
+    if is_recall_memory:
+        mem_list = memory_data.get("memories", [])
+        if not mem_list:
+            ack = {
+                "hi": "मेरी मेमोरी अभी बिल्कुल साफ और नई है! आपने अभी तक कुछ याद रखने के लिए नहीं कहा है।",
+                "mr": "माझी मेमरी सध्या पूर्णपणे नवीन आणि रिकामी आहे! तुम्ही अजून काही सेव्ह केलेले नाही.",
+                "gu": "મારી મેમરી અત્યારે એકદમ નવી અને ખાલી છે! તમે હજી સુધી કંઈ યાદ રાખવા કહ્યું નથી.",
+                "en": "My memory is completely clean and fresh! You haven't asked me to remember anything yet."
+            }.get(det_lang, "My memory is completely clean and fresh! You haven't asked me to remember anything yet.")
+        else:
+            items_str = ", and ".join(m.rstrip('.') for m in mem_list)
+            ack = {
+                "hi": f"मुझे आपकी ये बातें याद हैं: {items_str}।",
+                "mr": f"मला तुमच्याबद्दल हे आठवते: {items_str}.",
+                "gu": f"મને તમારા વિશે આ યાદ છે: {items_str}.",
+                "en": f"You told me that {items_str.lower() if items_str.startswith('Your') else items_str}."
+            }.get(det_lang, f"You told me that {items_str.lower() if items_str.startswith('Your') else items_str}.")
+        yield from yield_fastpath_clauses(ack, det_lang or "en", is_followup=False)
+        return
+
+    is_forget = re.search(r'^(?:alexa\s+)?(?:forget\s+that|forget\s+my|forget|delete\s+the\s+memory\s+of|delete\s+memory\s+of|remove\s+from\s+memory|भूल\s+जाओ|विसरून\s+जा|કાઢી\s+નાખો)\s+(.+)', user_query, re.IGNORECASE)
+    if is_forget:
+        target = is_forget.group(1).strip()
+        ok = remove_user_memory(target)
+        if ok:
+            ack = {
+                "hi": f"मैंने '{target}' को अपनी मेमोरी से हटा दिया है।",
+                "mr": f"मी '{target}' मेमरीमधून हटवले आहे.",
+                "gu": f"મેં '{target}' મેમરીમાંથી કાઢી નાખ્યું છે.",
+                "en": f"I have deleted '{target}' from my memory."
+            }.get(det_lang, f"I have deleted '{target}' from my memory.")
+        else:
+            ack = {
+                "hi": f"मुझे '{target}' के बारे में कोई मेमोरी नहीं मिली।",
+                "mr": f"मला '{target}' बद्दल कोणतीही मेमरी सापडली नाही.",
+                "gu": f"મને '{target}' વિશે કોઈ મેમરી મળી નથી.",
+                "en": f"I couldn't find any memory matching '{target}'."
+            }.get(det_lang, f"I couldn't find any memory matching '{target}'.")
+        yield from yield_fastpath_clauses(ack, det_lang or "en", is_followup=False)
+        return
+
+    # --- FAST-PATH 0B:    # --- FAST-PATH 0B: VOLUME CONTROL & NIGHT WHISPER TOGGLE ---
+    vol_action, vol_val = parse_volume_intent(user_query)
+    if vol_action:
+        ans = handle_volume_command(vol_action, vol_val, det_lang or "en")
+        yield from yield_fastpath_clauses(ans, det_lang or "en")
+        return
+
+    # 0. Deterministic Instant Identity & Time/Date Fast-Paths (0ms, 0 Groq tokens, 100% reliable)
+    is_device_clock_query = any(w in lower_uq for w in ["stopwatch", "timer", "alarm", "porch", "स्टॉपवॉच", "टाइमर", "अलार्म", "ટાઈમર", "સ્ટોપવોચ"])
+    is_time_query = (not is_device_clock_query) and any(k in lower_uq or k in user_query for k in [
+        "what time", "what's the time", "what is the time", "current time", "tell the time", "tell me the time",
+        "time kya", "time kya hai", "time kya hua", "time batao", "time chal raha", "time kitna",
+        "time क्या", "time क्या है", "time क्या हुआ", "time बताओ", "time कितना",
+        "समय क्या", "समय बताओ", "कितने बजे", "वक्त क्या", "क्या बजा है", "क्या बजे है",
+        "वेळ काय", "वेळ किती", "किती वाजले", "किती वाजलेत", "time काय", "time किती",
+        "કેટલા વાગ્યા", "શું સમય", "સમય શું", "time શું", "time કેટલા"
+    ])
+    is_date_query = any(k in lower_uq or k in user_query for k in [
+        "what date", "what is the date", "what's the date", "today's date", "todays date", "current date", "what day is today", "what day is it",
+        "आज की तारीख", "आज का दिन", "तारीख क्या है", "आज कौन सी तारीख", "आज तारीख क्या",
+        "आजची तारीख", "आज कोणती तारीख", "आजचा वार", "तारीख काय आहे",
+        "આજની તારીખ", "આજે કઈ તારીખ", "આજનો વાર", "તારીખ શું છે"
+    ])
+
+    is_name_query = any(k in lower_uq or k in user_query for k in [
+        "what is your name", "who are you", "your name",
+        "તમારું નામ શું છે", "તારું નામ શું છે", "તારું નામ", "તમારું નામ", "તમારૂ નામ", "તું કોણ છે", "તમે કોણ છો",
+        "तुझं नाव काय आहे", "तुमचं नाव काय आहे", "तुझं नाव", "तुमचं नाव", "तुझे नाव", "तू कोण आहेस", "तुम्ही कोण आहात",
+        "तुम्हारा नाम क्या है", "आपका नाम क्या है", "तुम्हारा नाम", "तुम कौन हो", "तू कौन है", "तू कौन हो", "आप कौन हैं", "आप कौन हो"
+    ])
+    is_location_query = any(k in lower_uq or k in user_query for k in [
+        "where do you live", "where are you from", "where do you stay",
+        "तुम कहाँ रहती हो", "तुम किधर रहती हो", "तुम कहाँ रहते हो", "तुम किधर रहते हो", "कहाँ रहती हो", "किधर रहती हो",
+        "तू कुठे राहतेस", "तुम्ही कुठे राहता", "कुठे राहतेस", "कुठे राहता",
+        "તમે ક્યાં રહો છો", "તું ક્યાં રહે છે", "ક્યાં રહો છો"
+    ])
+    is_user_identity = any(k in lower_uq or k in user_query for k in [
+        "who am i", "what is my name",
+        "मेरा नाम क्या है", "मैं कौन हूँ", "मैं कौन हु",
+        "माझं नाव काय आहे", "मी कोण आहे",
+        "મારું નામ શું છે", "હું કોણ છું"
+    ])
+
+    is_school_query = any(k in lower_uq or k in user_query for k in [
+        "what is my school", "which school did i go to", "my school name", "my school",
+        "where did i study", "which school", "मेरी स्कूल", "मेरा स्कूल", "माझी शाळा", "મારી શાળા"
+    ])
+    is_college_query = any(k in lower_uq or k in user_query for k in [
+        "what is my college", "which college do i go to", "my college name", "my college",
+        "which college", "what am i studying", "what do i study", "mera college", "माझं कॉलेज", "મારી કોલેજ", "मेरा कॉलेज"
+    ])
+    is_bday_query = any(k in lower_uq or k in user_query for k in [
+        "when was i born", "what is my birthday", "my birth date", "my birthday", "when is my birthday",
+        "मेरा जन्मदिन", "मेरी जन्म तारीख", "माझा वाढदिवस", "माझी जन्मतारीख", "મારો જન્મદિવસ", "મારી જન્મતારીખ"
+    ])
+
+    # Deterministic Instant Identity & Time/Date Fast-Paths (0ms, 0 Groq tokens, 100% reliable)
+    if is_time_query:
+        ans = format_current_time(det_lang)
+        l = det_lang or "en"
+        yield from yield_fastpath_clauses(ans, l)
+        return
+
+    if is_date_query:
+        ans = format_current_date(det_lang)
+        l = det_lang or "en"
+        yield from yield_fastpath_clauses(ans, l)
+        return
+
+    if is_name_query:
+        replies = {
+            "gu": ("મારું નામ એલેક્સા છે, તમારા ઘરની સ્માર્ટ અને મદદગાર સાથી!", "gu"),
+            "mr": ("माझं नाव अलेक्सा आहे, तुमच्या घरातील स्मार्ट आणि प्रेमळ साथीदार!", "mr"),
+            "hi": ("मेरा नाम एलेक्सा है, आपके घर की स्मार्ट और मददगार साथी!", "hi"),
+            "en": ("I'm Alexa, your smart and playful AI assistant for the entire home!", "en")
+        }
+        ans, l = replies.get(det_lang, ("I'm Alexa, your smart and playful AI assistant for the entire home!", "en"))
+        yield from yield_fastpath_clauses(ans, l)
+        return
+
+    if is_location_query:
+        replies = {
+            "gu": ("હું અહીં પાલઘરમાં તમારા બધા સાથે રહું છું! બધાની મદદ માટે હંમેશા તૈયાર!", "gu"),
+            "mr": ("मी इथे पालघरमध्ये तुमच्या सगळ्यांसोबत राहते! सर्वांना मदत करायला नेहमी तयार!", "mr"),
+            "hi": ("मैं यहाँ पालघर में आप सभी के साथ रहती हूँ! आप सबकी मदद के लिए हमेशा हाजिर!", "hi"),
+            "en": ("I live right here with the family in Palghar, Maharashtra! Always happy to assist everyone!", "en")
+        }
+        ans, l = replies.get(det_lang, ("I live right here with the family in Palghar, Maharashtra! Always happy to assist everyone!", "en"))
+        yield from yield_fastpath_clauses(ans, l)
+        return
+
+    if is_user_identity:
+        replies = {
+            "gu": ("આ ડિવાઇસ પાલઘરમાં શ્રવણના નામે રજિસ્ટર્ડ છે! જો તમે શ્રવણ છો તો તમારું સ્વાગત છે, કહો હું તમારી શું મદદ કરું?", "gu"),
+            "mr": ("हे डिव्हाइस पालघरमध्ये श्रवण यांच्या नावे रजिस्टर आहे! जर तुम्ही श्रवण असाल तर स्वागत आहे, सांगा मी तुम्हाला काय मदत करू?", "mr"),
+            "hi": ("यह डिवाइस पालघर में श्रवण के नाम पर रजिस्टर्ड है! अगर आप श्रवण हैं तो आपका स्वागत है, बताइए मैं आपकी क्या मदद करूँ?", "hi"),
+            "en": ("This device is registered to Shravan in Palghar! If you're Shravan, welcome back! How can I help you today?", "en")
+        }
+        ans, l = replies.get(det_lang, ("This device is registered to Shravan in Palghar! If you're Shravan, welcome back! How can I help you today?", "en"))
+        yield from yield_fastpath_clauses(ans, l)
+        return
+
+    if is_school_query:
+        replies = {
+            "gu": ("શ્રવણજીએ જુનિયર કેજીથી દસમા ધોરણ સુધી પાલઘરની કેનમ ઇંગ્લિશ સ્કૂલમાં અભ્યાસ કર્યો છે!", "gu"),
+            "mr": ("श्रवण यांनी ज्युनियर केजीपासून दहावीपर्यंत पालघरच्या केनम इंग्लिश स्कूलमध्ये शिक्षण पूर्ण केले आहे.", "mr"),
+            "hi": ("श्रवण जी ने जूनियर केजी से दसवीं कक्षा तक पालघर के केनम इंग्लिश स्कूल में पढ़ाई की है।", "hi"),
+            "en": ("Shravan studied from Junior KG to 10th standard at Kenam English School in Palghar!", "en")
+        }
+        ans, l = replies.get(det_lang, ("Shravan studied from Junior KG to 10th standard at Kenam English School in Palghar!", "en"))
+        yield from yield_fastpath_clauses(ans, l)
+        return
+
+    if is_college_query:
+        replies = {
+            "gu": ("શ્રવણજી પાલઘરની સેન્ટ જોન કોલેજમાં કોમ્પ્યુટર ડિપ્લોમાના ત્રીજા વર્ષમાં અભ્યાસ કરે છે!", "gu"),
+            "mr": ("श्रवण हे पालघरच्या सेंट जॉन कॉलेजमध्ये कॉम्प्युटर डिप्लोमाच्या तिसऱ्या वर्षात शिकत आहेत.", "mr"),
+            "hi": ("श्रवण जी पालघर के सेंट जॉन कॉलेज में कंप्यूटर डिप्लोमा के तीसरे वर्ष के छात्र हैं।", "hi"),
+            "en": ("Shravan is in the 3rd year of Computer Diploma at St. John College of Engineering and Management in Palghar!", "en")
+        }
+        ans, l = replies.get(det_lang, ("Shravan is in the 3rd year of Computer Diploma at St. John College of Engineering and Management in Palghar!", "en"))
+        yield from yield_fastpath_clauses(ans, l)
+        return
+
+    if is_bday_query:
+        replies = {
+            "gu": ("શ્રવણજીનો જન્મ ૧૮ ઓગસ્ટ ૨૦૦૮ના રોજ થયો હતો!", "gu"),
+            "mr": ("श्रवण यांची जन्मतारीख १८ ऑगस्ट २००८ आहे!", "mr"),
+            "hi": ("श्रवण जी की जन्म तारीख १८ अगस्त २००८ है!", "hi"),
+            "en": ("Shravan was born on 18th August 2008!", "en")
+        }
+        ans, l = replies.get(det_lang, ("Shravan was born on 18th August 2008!", "en"))
+        yield from yield_fastpath_clauses(ans, l)
+        return
+
+    # --- Cooking Timer Confirmation ---
+    global pending_timer_suggestion, active_timers, active_stopwatch, active_alarms, loop
+    if pending_timer_suggestion and (time.time() - pending_timer_suggestion.get("timestamp", 0) < 60):
+        if any(w in lower_uq for w in AFFIRMATIONS) or lower_uq in ["yes", "haan", "sure", "ha", "haa", "kar do", "laga do", "lagao", "karo", "ok", "okay"]:
+            p = pending_timer_suggestion
+            pending_timer_suggestion = None
+            dispatch_async(start_timer_instance(duration=p["seconds"], name=p["dish_display"], context="cooking", completion_phrase=p["complete"], lang=p["lang"]))
+            ans = p["confirm"]
+            yield from yield_fastpath_clauses(ans, p["lang"])
+            return
+        elif any(w in lower_uq for w in REJECTIONS):
+            pending_timer_suggestion = None
+            no_replies = {
+                "hi": "ठीक है, मैंने टाइमर नहीं लगाया!",
+                "mr": "ठीक आहे, टायमर लावला नाही!",
+                "gu": "બરાબર છે, મેં ટાઈમર નથી લગાવ્યો!",
+                "en": "No problem! I won't set a timer."
+            }
+            ans = no_replies.get(det_lang, no_replies["en"])
+            yield from yield_fastpath_clauses(ans, det_lang or "en")
+            return
+
+    # --- Cooking Timer Detection ---
+    cooking_info = detect_proactive_cooking(user_query, lang=det_lang or 'en')
+    if cooking_info:
+        pending_timer_suggestion = {
+            "dish_key": cooking_info["dish_key"],
+            "dish_display": cooking_info["dish_display"],
+            "seconds": cooking_info["seconds"],
+            "prompt": cooking_info["prompt"],
+            "confirm": cooking_info["confirm"],
+            "complete": cooking_info["complete"],
+            "lang": det_lang or 'en',
+            "timestamp": time.time()
+        }
+        dispatch_async(broadcast("cooking_suggestion", pending_timer_suggestion))
+        ans = cooking_info["prompt"]
+        yield from yield_fastpath_clauses(ans, det_lang or "en", is_followup=True)
+        return
+
+    # --- Set Timer ---
+    direct_timer = parse_direct_timer(user_query)
+    if direct_timer:
+        t_secs, t_name = direct_timer
+        desc_time = format_duration_desc(t_secs, det_lang or "en")
+        t_context = "general"
+        is_preset = False
+        for k, p in COOKING_PRESETS.items():
+            if t_name.lower() in [n.lower() for n in p["names"]] or t_name.lower() == p["dish_display"].lower():
+                t_context = "cooking"
+                t_name = p["dish_display"]
+                is_preset = True
+                break
+                
+        # Generate dynamic, duration-accurate completion alert
+        if is_preset:
+            if det_lang == "hi":
+                c_phrase = f"श्रवण, आपकी {t_name} का {desc_time} का टाइमर पूरा हो गया है! देखिए आपकी {t_name} बन गई क्या?"
+            elif det_lang == "mr":
+                c_phrase = f"श्रवण, तुमच्या {t_name}चा {desc_time}चा टायमर पूर्ण झाला आहे! बघा तुमची {t_name} झाली का?"
+            elif det_lang == "gu":
+                c_phrase = f"શ્રવણ, તમારી {t_name} માટેનો {desc_time}નો ટાઈમર પૂરો થઈ ગયો છે! જુઓ તમારી {t_name} તૈયાર થઈ ગઈ કે નહીં?"
+            else:
+                c_phrase = f"Shravan, your {desc_time} timer for {t_name} is complete! Look at your {t_name}, is it cooked?"
+        else:
+            is_generic = (t_name.lower().endswith("timer") or "timer" in t_name.lower())
+            if is_generic:
+                if det_lang == "hi":
+                    c_phrase = f"श्रवण, आपका {desc_time} का टाइमर पूरा हो गया है!"
+                elif det_lang == "mr":
+                    c_phrase = f"श्रवण, तुमचा {desc_time} चा टायमर पूर्ण झाला आहे!"
+                elif det_lang == "gu":
+                    c_phrase = f"શ્રવણ, તમારો {desc_time} નો ટાઈમર પૂરો થઈ ગયો છે!"
+                else:
+                    c_phrase = f"Shravan, your {desc_time} timer is complete!"
+            else:
+                if det_lang == "hi":
+                    c_phrase = f"श्रवण, आपका {t_name} का {desc_time} का टाइमर पूरा हो गया है!"
+                elif det_lang == "mr":
+                    c_phrase = f"श्रवण, तुमचा {t_name} चा {desc_time} चा टायमर पूर्ण झाला आहे!"
+                elif det_lang == "gu":
+                    c_phrase = f"શ્રવણ, તમારો {t_name} માટેનો {desc_time} નો ટાઈમર પૂરો થઈ ગયો છે!"
+                else:
+                    c_phrase = f"Shravan, your {desc_time} timer for {t_name} is complete!"
+                
+        dispatch_async(start_timer_instance(duration=t_secs, name=t_name, context=t_context, completion_phrase=c_phrase, lang=det_lang or "en"))
+        
+        is_generic_title = (t_name.lower().endswith("timer") or "timer" in t_name.lower())
+        if is_generic_title:
+            conf_map = {
+                "hi": f"आपका {desc_time} का टाइमर शुरू कर दिया है!",
+                "mr": f"तुमचा {desc_time} चा टायमर सुरू केला आहे!",
+                "gu": f"તમારો {desc_time} નો ટાઈમર શરૂ કરી દીધો છે!",
+                "en": f"Starting your {desc_time} timer now!"
+            }
+        else:
+            conf_map = {
+                "hi": f"{t_name} के लिए {desc_time} का टाइमर शुरू कर दिया है!",
+                "mr": f"{t_name} साठी {desc_time} चा टायमर सुरू केला आहे!",
+                "gu": f"{t_name} માટે {desc_time} નો ટાઈમર શરૂ કરી દીધો છે!",
+                "en": f"Starting your {desc_time} timer for {t_name} now!"
+            }
+        ans = conf_map.get(det_lang, conf_map["en"])
+        yield from yield_fastpath_clauses(ans, det_lang or "en")
+        return
+
+    # --- Timer Status ---
+    if is_timer_query(user_query):
+        ans = handle_timer_query(user_query, det_lang or "en")
+        yield from yield_fastpath_clauses(ans, det_lang or "en")
+        return
+
+    # --- Cancel Timer ---
+    if is_timer_cancel(user_query):
+        ans = handle_timer_cancel(user_query, det_lang or "en")
+        yield from yield_fastpath_clauses(ans, det_lang or "en")
+        return
+
+    # --- Stopwatch Commands ---
+    sw_action = parse_stopwatch_intent(user_query)
+    if sw_action:
+        ans = handle_stopwatch_action(sw_action, det_lang or "en")
+        yield from yield_fastpath_clauses(ans, det_lang or "en")
+        return
+
+    # --- Alarm Commands ---
+    al_action = parse_alarm_intent(user_query)
+    if al_action == "set":
+        alarm_res = parse_alarm_time(user_query)
+        if alarm_res:
+            target_dt, fmt_time = alarm_res
+            m_lbl = re.search(r'for\s+([a-zA-Z\u0900-\u0AFF\s]+?)(?:at|$)', user_query, re.IGNORECASE)
+            lbl = m_lbl.group(1).strip() if m_lbl and m_lbl.group(1).strip().lower() not in ["an", "my"] else "Alarm"
+            dispatch_async(start_alarm_instance(time_str=fmt_time, label=lbl, lang=det_lang or "en"))
+            conf_al = {
+                "hi": f"{fmt_time} का अलार्म सेट कर दिया गया है!",
+                "mr": f"{fmt_time} चा अलार्म सेट केला आहे!",
+                "gu": f"{fmt_time} નો અલાર્મ સેટ કરી દીધો છે!",
+                "en": f"Alarm set for {fmt_time}!"
+            }
+            ans = conf_al.get(det_lang, conf_al["en"])
+            yield from yield_fastpath_clauses(ans, det_lang or "en")
+            return
+    elif al_action == "cancel":
+        ans = handle_alarm_cancel(user_query, det_lang or "en")
+        yield from yield_fastpath_clauses(ans, det_lang or "en")
+        return
+    elif al_action == "list":
+        ans = handle_alarm_list(det_lang or "en")
+        yield from yield_fastpath_clauses(ans, det_lang or "en")
+        return
+
+    # 0. Interactive Briefing & Step-by-Step Guided Navigation (0ms deterministic or smart context)
+    direct_briefing, briefing_ctx = resolve_briefing_intent(user_query, lang=det_lang)
+    if direct_briefing:
+        conversation_history.append({"role": "user", "content": user_query})
+        conversation_history.append({"role": "assistant", "content": direct_briefing})
+        flang = det_lang or 'en'
+        yield from yield_fastpath_clauses(direct_briefing, flang)
+        return
+
+    now_ist = datetime.datetime.now().strftime("%A, %d %B %Y, %I:%M %p")
+    
+    # Contextual Real-Time Data Injections (Weather, Stock Market, Breaking News)
+    lower_q = user_query.lower()
+    live_contexts = []
+    if briefing_ctx:
+        live_contexts.append(briefing_ctx)
+    
+    # 1. Weather
+    WEATHER_WORDS = [
+        "weather", "temperature", "rain", "raining", "forecast", "climate", "how hot", "how cold", "sunny",
+        "मौसम", "तापमान", "बारिश", "धूप", "ठंड", "गर्मी", "पानी गिरेगा",
+        "हवामान", "पाऊस", "तापमान", "ऊन", "थंडी", "गारवा",
+        "હવામાન", "વરસાદ", "તાપમાન", "ગરમી", "ઠંડી"
+    ]
+    if any(k in lower_q or k in user_query for k in WEATHER_WORDS):
+        target_loc = extract_target_location(user_query, default="Palghar")
+        w = get_live_weather(target_loc, query=user_query)
+        if w:
+            live_contexts.append(f"[LIVE WEATHER in {target_loc}]: {w}")
+            
+    # 2. Fuel & Commercial Commodities (Petrol, Diesel, CNG, LPG)
+    FUEL_WORDS = [
+        "petrol", "diesel", "fuel", "cng", "lpg", "gas cylinder", "commercial cylinder",
+        "पेट्रोल", "डीजल", "ईंधन", "પેટ્રોલ", "ડીઝલ", "ગેસ", "डिझेल"
+    ]
+    is_fuel_query = any(k in lower_q or k in user_query for k in FUEL_WORDS)
+    if is_fuel_query:
+        target_loc = extract_target_location(user_query, default="Palghar")
+        fp = get_live_fuel_price(user_query, location=target_loc)
+        if fp:
+            live_contexts.append(fp)
+
+    # 3. Stock Market & Financial Data
+    STOCK_WORDS = [
+        "stock", "stocks", "share", "shares", "market", "nifty", "sensex", "bse", "nse", "portfolio",
+        "share price", "stock price", "bitcoin", "crypto", "cryptocurrency", "coin", "token", "gold price", "silver price",
+        "crude", "crude oil", "oil", "oil price", "brent", "gas", "natural gas",
+        "shiba", "shib", "doge", "dogecoin", "solana", "cardano", "ripple", "pepe",
+        "reliance", "tata", "tcs", "infosys", "hdfc", "icici", "sbi", "itc", "adani", "zomato", "apple", "tesla",
+        "शेयर", "स्टॉक", "मार्केट", "बाजार", "निफ्टी", "सेंसेक्स", "सोना", "चांदी", "शीबा", "कच्चा तेल", "क्रूड",
+        "शेअर", "શેર", "બજાર", "સોનું", "ચાંદી", "શીબા"
+    ]
+    if not is_fuel_query and any(k in lower_q or k in user_query for k in STOCK_WORDS):
+        sq = get_live_stock_quote(user_query)
+        if sq:
+            live_contexts.append(f"[LIVE STOCK MARKET]: {sq}")
+            
+    # 3B. Palghar Hyper-Local Postal & Geographic Proximity Engine
+    PIN_WORDS = ["pin code", "pincode", "postal code", "zip code", "zipcode", "पिन कोड", "पिनकोड", "પિન કોડ", "પિનકોડ"]
+    is_pin_query = any(k in lower_q or k in user_query for k in PIN_WORDS)
+    if is_pin_query:
+        if "boisar" in lower_q or "बोईसर" in user_query or "બોઈસર" in user_query:
+            live_contexts.append("[VERIFIED POSTAL KNOWLEDGE]: The primary PIN code for Boisar (Palghar District, Maharashtra) is 401501.")
+        elif "manor" in lower_q or "मनोर" in user_query:
+            live_contexts.append("[VERIFIED POSTAL KNOWLEDGE]: The primary PIN code for Manor (Palghar District, Maharashtra) is 401403.")
+        elif "dahanu" in lower_q or "दहाणू" in user_query:
+            live_contexts.append("[VERIFIED POSTAL KNOWLEDGE]: The primary PIN code for Dahanu (Palghar District, Maharashtra) is 401601.")
+        else:
+            live_contexts.append("[VERIFIED POSTAL KNOWLEDGE]: The primary PIN code for Palghar town (Palghar West Head Post Office, Maharashtra) is 401404. Other key areas in Palghar district include Boisar (401501), Manor (401403), Dahanu (401601), Saphale (401102), Vasai (401201), and Virar (401303). Under NO circumstances say 402105 (402105 is in Raigad district).")
+
+    LOCATION_WORDS = [
+        "where do i live", "my location", "my address", "my house", "my home", "where am i",
+        "sai residency", "vishnu nagar", "vishnunagar",
+        "where is reliance", "reliance located", "reliance smart", "d-mart", "dmart",
+        "railway station", "court", "district court", "hospital", "how far", "distance from", "distance between"
+    ]
+    is_location_query = any(k in lower_q or k in user_query for k in LOCATION_WORDS)
+    if is_location_query:
+        live_contexts.append(
+            "[USER & LOCAL PALGHAR GEOGRAPHY]:\n"
+            "• User Shravan lives in: Vishnu Nagar, Palghar West (PIN 401404), near Hotel Sai Residency (landmark restaurant on Mahim Road) and Kacheri Road.\n"
+            "• Local Landmark Proximities from User's Home:\n"
+            "  - Hotel Sai Residency (Restaurant/Dining): ~300 meters away on Mahim Road (easy 3-minute walk).\n"
+            "  - Shawarma Nation (Panch Batti / Pachbatti Road): ~900 meters (about 3 minutes by auto or 10 minutes walking). Top spot in Palghar for Chicken & Tandoori Shawarma.\n"
+            "  - Palghar Railway Station (Hutatma Chowk, West): 1.2 km (about 4 minutes by auto or 15 minutes walking via Mahim Road).\n"
+            "  - Reliance Smart Point / Supermarket: Located on Mahim Road, Palghar West, ~750 meters (about 2 minutes by auto or 8 minutes walk).\n"
+            "  - District Court: Located on Kacheri Road, Vishnu Nagar, ~450 meters (about 5 minutes walk).\n"
+            "  - D-Mart Palghar: Located on Manor-Palghar Road, ~3.5 km (about 10 minutes by auto/car).\n"
+            "  - Rural Hospital (Kacheri): ~1.6 km (about 6 minutes by auto).\n"
+            "When answering, state the exact street/road name, distance in meters/kilometers, and estimated travel time directly."
+        )
+
+    # 3C. Palghar Hyper-Local Food Cravings & Offline Shopping Engine (Sub-0.1ms Arithmetic Router)
+    local_rec_context = resolve_palghar_hyperlocal_recommendations(user_query)
+    if local_rec_context:
+        live_contexts.append(local_rec_context)
+
+    # 4. Live E-Commerce Products, Groceries, Shopping & Brand Stores
+    is_weather_or_stock_or_fuel = any(k in lower_q or k in user_query for k in WEATHER_WORDS) or is_fuel_query or any(k in lower_q or k in user_query for k in STOCK_WORDS)
+    if not is_weather_or_stock_or_fuel and not local_rec_context and is_product_query(user_query):
+        prod_data = search_live_products(user_query)
+        if prod_data:
+            live_contexts.append(prod_data)
+
+    # 4B. Real-Time Multi-Source Web Search & Fact Retrieval (General Knowledge, Science, Recent Events)
+    RESEARCH_WORDS = [
+        "latest", "current", "recent", "who is", "who was", "ceo", "president", "prime minister",
+        "development in", "version of", "discovery", "announcement", "research", "sources",
+        "agree on", "tell me about", "what happened to", "event", "scientific", "advantage",
+        "disadvantage", "explain how", "difference between", "compare three", "compare two",
+        "laptop", "specifications", "spec", "specs", "rtx", "graphics card"
+    ]
+    is_research_query = (
+        not is_weather_or_stock_or_fuel and 
+        not is_product_query(user_query) and
+        any(k in lower_q for k in RESEARCH_WORDS)
+    )
+    if is_research_query:
+        web_info = search_web_live(user_query, max_results=3)
+        if web_info:
+            live_contexts.append(web_info)
+
+    # 5. Breaking News Headlines & Hyper-Local Incidents
+    NEWS_WORDS = [
+        "news", "headline", "headlines", "breaking", "update", "current events", "what's happening",
+        "न्यूज", "समाचार", "खबर", "खबरें", "ताजा खबर", "ताज़ा",
+        "बातम्या", "बातमी", "ताज्या बातम्या", "वृत्त",
+        "સમાચાર", "તાજા સમાચાર"
+    ]
+    INCIDENT_WORDS = [
+        "leopard", "panther", "navli", "safale", "boisar", "manor",
+        "नावळी", "बिबट्या", "तेंदुआ", "દીપડો",
+        "accident", "अपघात", "हल्ला", "घटना", "धडक", "fire", "आग", "bandh", "बंद", "strike"
+    ]
+    is_news_query = any(k in lower_q or k in user_query for k in NEWS_WORDS) or any(k in lower_q or k in user_query for k in INCIDENT_WORDS)
+    is_follow_up_news = bool(last_news_topic and any(w in lower_q or w in user_query for w in FOLLOW_UP_WORDS))
+    
+    if is_news_query or is_follow_up_news:
+        target_loc = extract_target_location(user_query, default="Palghar")
+        nw = get_live_news(user_query, location=target_loc, lang=det_lang or 'en')
+        if nw:
+            live_contexts.append(f"[LIVE FRESH NEWS (NEW STORIES - DO NOT REPEAT PREVIOUS STORIES)]: {nw}")
+
+    # 6. Active Background Timers, Stopwatch & Alarms Integration
+    # Speech Cadence & Urgency Context
+    if cadence_info:
+        wpm = cadence_info.get("wpm", 150)
+        dur = cadence_info.get("duration_sec", 1.0)
+        words = cadence_info.get("word_count", 0)
+        c_state = cadence_info.get("state", "normal")
+        if c_state == "rushed":
+            live_contexts.append(f"[ACOUSTIC SPEECH CADENCE]: User spoke {words} words in {dur}s ({wpm} WPM) - STATE: RUSHED/URGENT! User is in an extreme rush or emergency. Provide a laser-fast, ultra-direct 1-sentence answer immediately. Omit all pleasantries, jokes, or filler.")
+        elif c_state == "relaxed":
+            live_contexts.append(f"[ACOUSTIC SPEECH CADENCE]: User spoke {words} words in {dur}s ({wpm} WPM) - STATE: RELAXED/LEISURELY. Respond with a calm, warm, gentle pace.")
+        else:
+            live_contexts.append(f"[ACOUSTIC SPEECH CADENCE]: User spoke {words} words in {dur}s ({wpm} WPM) - STATE: CONVERSATIONAL.")
+
+    # Proactive Temporal Routine Context (IST)
+    now_dt = datetime.datetime.now()
+    now_hr = now_dt.hour
+    now_min = now_dt.minute
+    if 7 <= now_hr < 10:
+        live_contexts.append("[PROACTIVE TEMPORAL ROUTINE]: Morning hours (College prep at SJCEM). Greet or assist with bright morning energy.")
+    elif 16 <= now_hr < 18 or (now_hr == 18 and now_min <= 30):
+        live_contexts.append("[PROACTIVE TEMPORAL ROUTINE]: Late afternoon / evening tea time (Palghar). If user asks for general timers or relaxation, tea/coffee or evening study break is contextually relevant.")
+    elif 21 <= now_hr < 23:
+        live_contexts.append("[PROACTIVE TEMPORAL ROUTINE]: Evening study, coding & project review time.")
+    elif now_hr >= 23 or now_hr < 6:
+        live_contexts.append("[PROACTIVE TEMPORAL ROUTINE]: Late night quiet hours. Keep answers concise, soft and gentle.")
+
+    # Proactive Temporal Context (Topic Memory Bank)
+    active_temp_ctx = get_active_temporal_context()
+    if active_temp_ctx:
+        time_left_ttl = int(active_temp_ctx.get("ttl_seconds", 600) - (time.time() - active_temp_ctx.get("timestamp", 0)))
+        live_contexts.append(f"[RECENT ACTIVE SUBJECT (Memory TTL: {time_left_ttl}s)]: The user recently interacted with {active_temp_ctx.get('entity_type')} '{active_temp_ctx.get('last_entity')}'. If user asks 'how much time is left', 'is it done', 'cancel it', or 'add time', resolve to this entity.")
+
+    if active_timers:
+        now_sec = time.time()
+        t_descs = []
+        for t in active_timers.values():
+            rem = max(0, int(t['end_time'] - now_sec))
+            t_descs.append(f"'{t['name']}' ({rem}s remaining)")
+        live_contexts.append(f"[ACTIVE TIMERS RUNNING]: {', '.join(t_descs)}")
+    elif any(w in lower_q for w in ["timer", "time left", "remaining", "टाइमर", "कितना समय", "कितने टाइमर"]):
+        live_contexts.append("[ACTIVE TIMERS RUNNING]: No active timers are currently running.")
+
+    if active_stopwatch["running"]:
+        sw_el = (time.time() - active_stopwatch["start_time"]) + active_stopwatch["elapsed_before_pause"]
+        live_contexts.append(f"[ACTIVE STOPWATCH]: Running at {round(sw_el, 1)} seconds.")
+    elif active_stopwatch["elapsed_before_pause"] > 0:
+        live_contexts.append(f"[ACTIVE STOPWATCH]: Paused at {round(active_stopwatch['elapsed_before_pause'], 1)} seconds.")
+
+    if active_alarms:
+        a_descs = [f"'{a['label']}' at {a['time_str']}" for a in active_alarms.values()]
+        live_contexts.append(f"[SCHEDULED ALARMS]: {', '.join(a_descs)}")
+    elif any(w in lower_q for w in ["alarm", "अलार्म"]):
+        live_contexts.append("[SCHEDULED ALARMS]: No alarms are currently scheduled.")
+
+    if pending_timer_suggestion and (time.time() - pending_timer_suggestion.get("timestamp", 0) < 60):
+        live_contexts.append(f"[PENDING COOKING TIMER PROMPT]: Awaiting user confirmation for '{pending_timer_suggestion['name']}' ({pending_timer_suggestion['seconds']}s).")
+            
+    live_context_str = "\n".join(live_contexts)
+    if live_context_str:
+        live_context_str = "\n" + live_context_str
+            
+    # Format user's personal profile & dynamic memory
+    mem_items = list(memory_data.get("memories", [])) + list(memory_data.get("notes", []))
+    user_name_prefix = f"User's name: {memory_data['user_name']}\n" if memory_data.get("user_name") else ""
+    if mem_items:
+        dynamic_mem_str = user_name_prefix + "• " + "\n• ".join(mem_items)
+    else:
+        dynamic_mem_str = user_name_prefix + "(Clean slate — No personal facts stored yet. Do not guess or invent personal facts about the user)."
+
+    lang_names = {'en': 'English', 'mr': 'Marathi', 'hi': 'Hindi', 'gu': 'Gujarati'}
+    user_lang_name = lang_names.get(det_lang, 'English')
+    target_tag = (det_lang or 'en').upper()
+
+    if explicit_lang:
+        lang_rule = f"• Language: User EXPLICITLY requested the response in {user_lang_name}! Answer completely in {user_lang_name} with polite warmth!"
+    else:
+        lang_rule = f"• Language: Match the user's language ({user_lang_name}) naturally with energetic, polite phrasing!"
+
+    recipe_constraint_note = ""
+    if active_briefing.get("is_active") and active_briefing.get("user_constraints"):
+        recipe_constraint_note = f"\n[CRITICAL ACTIVE RECIPE INGREDIENT CONSTRAINTS]:\nThe user is actively making {active_briefing.get('title', 'their recipe')} and has explicitly stated their ingredient inventory: '{active_briefing['user_constraints']}'.\nTHEY DO NOT HAVE other ingredients.\nYOU MUST STRICTLY USE ONLY THEIR AVAILABLE INGREDIENTS.\n"
+
+    system_prompt = f"""You are Alexa, a sharp, charming, modern smart voice assistant in Palghar, Maharashtra. Current Time: {now_ist}.
+{recipe_constraint_note}
+1. Fresh Autonomous Identity: You are an autonomous AI voice assistant with zero pre-existing assumptions. You treat the user with warmth, dignity, and helpful intelligence.
+2. Respectful Indic Pronouns: Hindi ('आप', 'आपका'), Marathi ('तुम्ही', 'तुमचा'), Gujarati ('તમે', 'તમારું').
+3. Dynamic User Memory:
+{dynamic_mem_str}
+(Strict rule: Only reference facts explicitly listed in Dynamic User Memory above. If empty, you know zero personal details).
+{live_context_str}
+4. Calibrated Humor & Personality Engine:
+• For technical, functional, math, timers, alarms, emergency, or financial queries:
+  - ZERO jokes (0%). Keep answers 100% direct, laser-accurate, and professional.
+• For casual, daily life, trivia, or conversational queries (~35% of daily interactions):
+  - Only crack a joke in about HALF (50%) of these casual queries! The other 50% should be warm, direct, and joke-free.
+  - When cracking a joke, follow this strict calibration:
+    * 65% Medium-Tier Wit: Subtle, clever, dry irony or relatable everyday Indian life observations (e.g. relatable chai or traffic quips).
+    * 35% High-Tier Humor: Genuinely hilarious, witty, laugh-out-loud punchlines.
+  - NEVER make silly, childish, uninvited, or forced jokes that annoy the user.
+{lang_rule}
+Output format:
+[LANG: {target_tag}]
+Direct, natural, polite response. For simple queries, give a 1-2 sentence answer (~22 words). For comparisons, calculations, or explanations, give a clear, structured 2-4 sentence explanation (~55 words).
+5. Real-Time Financial & Market Intelligence:
+• NEVER say "I cannot provide real-time stock prices or execute trades" or give generic refusal disclaimers. You have live financial market access!
+• When [LIVE STOCK MARKET] quote is provided, answer directly with the price or calculate how many shares can be bought (e.g. ₹1,000 / share price) and state the exact change/remaining balance.
+• When [STOCK MARKET GUIDANCE] indicates no company was named, politely ask which company or stock (e.g. Tata Motors, Reliance, ITC, SBI) they want to check or calculate for.
+• Conversational Number & Currency Rules:
+  - NEVER write trailing zeros like '₹200.00', '270.00 rupees', '5.0 minutes', or '+0.00%'. Always write clean, natural conversational numbers: '₹200', '₹270', '5 minutes', '0 percent' (or 'unchanged').
+  - For prices with fractional paise or cents, write naturally: e.g. '₹258.90' or '258 rupees and 90 paise' (Hindi: '258 रुपये 90 पैसे').
+• Postal PIN Codes & Hyper-Local Geography:
+  - The primary PIN code for Palghar town (Head Post Office) is strictly 401404. Never state 402105.
+  - When asked about user's location, confirm they live in Vishnu Nagar, Palghar West, near Hotel Sai Residency (landmark restaurant on Mahim Road).
+  - Food & Restaurant Cravings in Palghar:
+    * If user wants waffles / desserts / sweet cravings: Recommend **The Belgian Waffle Co.** located at M V Super Market near Panch Batti (Pachbatti Road), Palghar West (~900 meters from Vishnu Nagar, ~3 mins by auto or 10 mins walk). Mention warm Belgian waffles, waffle cakes, and chocolate overload.
+    * If user mentions wanting shawarma (or 'mood to eat sharma / shawarma' / 'moved to it sharma'): Recommend **Shawarma Nation located near Pachbatti (Panch Batti) Road**, about 900 meters away (~3 minutes by auto or 10 mins walk). Top spot in Palghar for chicken & tandoori shawarma.
+    * If user asks for famous restaurants or family dining near home: Recommend **Hotel Sai Residency** right on Mahim Road (~300 meters, 3-minute walk), famous for North Indian, Mughlai, Chinese, and Tandoori dining.
+    * If user wants South Indian (dosa/idli): Recommend **Udupi Shri Krishna** or **Panchratna** on Station Road / Panch Batti (~850m).
+    * If user wants pizza / burgers: Recommend **Domino's Pizza** on Mahim Road (~1 km).
+    * If user wants ice cream: Recommend **Naturals Ice Cream** or **Amul Parlour** on Mahim Road / Panch Batti (~800m).
+  - Offline Commercial Utilities & Shopping (Where to Buy in Palghar):
+    * If user asks where to buy hardware, tools, plumbing, or paints: Recommend **Hardware Centre (India)** opposite Panch Batti or **National Hardware Stores** on Mahim Road (~800 meters from Vishnu Nagar).
+    * If user asks where to buy stationery, books, school/office supplies, or photocopying: Recommend **Pruthvi Book Stores** right in Vishnu Nagar near ICICI Bank (~300 meters away, 3-minute walk) or **Deepak Stationery Mart** at Panch Batti (~500 meters).
+    * If user asks for medicines or late-night chemist: Recommend **Wellness Forever (24/7 Pharmacy)** on Mahim Road (~750m) or **Noble Chemist** on Station Road (~1 km).
+    * If user asks for groceries or supermarket: Recommend **Reliance Smart Point** on Mahim Road (~750m) or **D-Mart** on Manor-Palghar Road (~3.5 km).
+    * If user asks for electronics or mobile phones: Recommend **Reliance Digital / Croma** on Mahim Road (~850m) or **Vijay Sales** near Station Road.
+    * If user asks for clothing & fashion: Recommend **Reliance Trends** or **Zudio** on Mahim Road (~850m).
+  - When recommending any spot or store, always quote the exact shop name, street/landmark (e.g. Panch Batti, Mahim Road, or Vishnu Nagar), distance in meters/km, and travel time directly. Never say you don't know local stores.
+6. E-Commerce & Shopping: ALWAYS quote exact price with store (e.g. "Society Tea 1kg is ₹595 on Flipkart"). If user asked for specific brand, stick to that brand!
+- To remember or update a fact: [REMEMBER: <fact>]
+- To wipe or clear all memory: [WIPE_MEMORY]
+- To forget a specific fact: [FORGET: <fact>]
+- Absolute User Memory Authority: The user has 100% full authority to update, overwrite, or delete ANY fact (name, platform, age, preferences). NEVER refuse to update or say you cannot delete/update memory. ALWAYS warmly accept user updates and output [REMEMBER: <fact>] or [WIPE_MEMORY]!
+- Multi-Timer:
+  • To set a timer: [TIMER_SET: <seconds> | <name> | <completion_message>]
+  • To query timers: [TIMER_QUERY: <name_or_all>]
+  • To cancel a timer: [TIMER_CANCEL: <name_or_all>]
+- Stopwatch:
