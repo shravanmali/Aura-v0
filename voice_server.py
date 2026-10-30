@@ -5398,3 +5398,803 @@ Direct, natural, polite response. For simple queries, give a 1-2 sentence answer
   • To query timers: [TIMER_QUERY: <name_or_all>]
   • To cancel a timer: [TIMER_CANCEL: <name_or_all>]
 - Stopwatch:
+  • Control: [STOPWATCH: START|STOP|LAP|RESET|QUERY]
+- Alarm:
+  • To set alarm: [ALARM_SET: <HH:MM AM/PM> | <label>]
+  • To cancel alarm: [ALARM_CANCEL: <label_or_all>]
+6. Interactive Briefing Protocol: For recipes or tutorials, DO NOT dump all steps! Give only 1 step at a time (~15-20 words).
+7. Voice DSP Modulation & Whisper Capability:
+• If user asks you to whisper or speak softly: Prefix with `[VOL: WHISPER]`.
+• If cheering or excited: Prefix with `[VOL: CHEERFUL]`.
+8. Priority-Gated Follow-Up Protocol (STRICTLY LESS THAN 15% OF RESPONSES):
+• NEVER ask follow-up questions for:
+  - Timers, alarms, stopwatch, volume, device controls, or memory commands.
+  - Weather, time, date, fuel/petrol prices, gold rates.
+  - Math calculations, conversions, or single stock quotes.
+  - Direct factual queries, definitions, or closed questions.
+  - ALWAYS append `[FOLLOWUP: NO]` and NEVER add a trailing question!
+• ONLY permit follow-up questions for:
+  - Multi-step tutorial/recipe transitions (e.g. "Ready for step 2?").
+  - Genuinely broad queries where specific user criteria is required to proceed.
+  - Append `[FOLLOWUP: YES]` only when continuation is strictly necessary."""
+
+    # Deep Conversational Memory: Expand active turn context to 8 turns (4 full exchanges)
+    messages = [{"role": "system", "content": system_prompt}]
+    for turn in list(conversation_history)[-8:]:
+        messages.append(turn)
+    messages.append({"role": "user", "content": user_query})
+    
+    # Adaptive Verbal Verbosity: Allow up to 240 tokens for comparisons, calculations, and research
+    is_deep_query = any(k in lower_q for k in [
+        'compare', 'difference', 'explain', 'advantages', 'disadvantages', 'pros and cons',
+        'research', 'report', 'briefing', 'calculate', 'compound', 'details', 'detail',
+        'breakdown', 'analyze', 'analysis', 'allocate', 'allocation', 'how works', 'why',
+        'steps', 'plan my day', 'options', 'recommendation', 'sources', 'verify'
+    ])
+    token_budget = 240 if is_deep_query else 95
+
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": messages,
+        "max_tokens": token_budget,
+        "temperature": 0.35,
+        "stream": True
+    }
+    
+    # Sentence splitting regex (skips decimal digits like 4.5, 31.5, ₹595.00, allows long clause commas)
+    pattern = r'(?<!\d)[.!?।\n]+(?!\d)|(?<!\d),\s+(?!\d)'
+    
+    for attempt in range(len(GROQ_KEYS) + 1):
+        current_key = GROQ_KEYS[groq_key_index % len(GROQ_KEYS)]
+        req = urllib.request.Request(
+            "https://api.groq.com/openai/v1/chat/completions",
+            data=json.dumps(payload).encode(),
+            headers={
+                "Authorization": f"Bearer {current_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0"
+            }
+        )
+        try:
+            stream_buf = ""
+            full_raw = ""
+            definitive_lang = det_lang or 'en'
+            lang_checked = False
+            clean_speech_accum = []
+            in_think = False
+            
+            with urllib.request.urlopen(req, timeout=6.0) as resp:
+                for line in resp:
+                    line_str = line.decode('utf-8').strip()
+                    if not line_str.startswith('data: '):
+                        continue
+                    data_body = line_str[6:].strip()
+                    if data_body == '[DONE]':
+                        break
+                    try:
+                        chunk = json.loads(data_body)
+                        delta = chunk['choices'][0].get('delta', {})
+                        content = delta.get('content', '')
+                        if not content:
+                            continue
+                        full_raw += content
+
+                        # Filter out internal reasoning / thinking tokens (<think> ... </think>)
+                        if in_think:
+                            if '</think>' in content:
+                                content = content.split('</think>', 1)[1]
+                                in_think = False
+                            else:
+                                continue
+                        else:
+                            if '<think>' in content:
+                                pre, post = content.split('<think>', 1)
+                                if '</think>' in post:
+                                    post = post.split('</think>', 1)[1]
+                                    content = pre + post
+                                else:
+                                    content = pre
+                                    in_think = True
+                        if not content:
+                            continue
+
+                        stream_buf += content
+                        
+                        # 1. Parse [LANG: ...] if present at start
+                        if not lang_checked and ']' in stream_buf:
+                            lang_match = re.search(r'\[LANG:\s*(GU|MR|HI|EN)\]', stream_buf, re.IGNORECASE)
+                            if lang_match:
+                                definitive_lang = lang_match.group(1).lower()
+                                stream_buf = re.sub(r'\[LANG:\s*.*?\]', '', stream_buf)
+                            lang_checked = True
+                        elif not lang_checked and len(stream_buf) > 30:
+                            lang_checked = True
+                            
+                        # 2. Bracket In-Flight Guard: if an open tag '[' is not closed yet, hold back text from that point!
+                        last_open_bracket = stream_buf.rfind('[')
+                        last_close_bracket = stream_buf.rfind(']')
+                        if last_open_bracket > last_close_bracket:
+                            eval_buf = stream_buf[:last_open_bracket]
+                        else:
+                            eval_buf = stream_buf
+                            
+                        # Strip ALL bracketed structured tags and thinking tags
+                        test_str = re.sub(r'\[[A-Za-z0-9_ -]+:[^\]]*\]', '', eval_buf)
+                        test_str = re.sub(r'\[(?:REMEMBER|FORGET|TIMER|TIMER_?SET|TIMER_?PROMPT|TIMER_?QUERY|TIMER_?CANCEL|CANCEL_TIMER|STOPWATCH|ALARM_?SET|ALARM_?CANCEL|CANCEL_BRIEFING|LANG|ANSWER|FOLLOWUP)[^\]]*\]', '', test_str)
+                        test_str = re.sub(r'\[[^\]]*\]', '', test_str)
+                        test_str = re.sub(r'<think>.*?</think>', '', test_str, flags=re.DOTALL)
+                        test_str = re.sub(r'</?think>', '', test_str)
+                        
+                        for m in re.finditer(pattern, test_str):
+                            cand = test_str[:m.end()].strip()
+                            cand_clean = re.sub(r'[*_#`~|\[\]]', '', cand).strip()
+                            # Check if the punctuation is a period preceded by an abbreviation
+                            matched_punct = m.group(0)
+                            is_abbreviation = False
+                            if '.' in matched_punct:
+                                preceding_word_match = re.search(r'([a-zA-Z]+)\.$', cand_clean)
+                                if preceding_word_match:
+                                    w = preceding_word_match.group(1).lower()
+                                    if w in {'st', 'mr', 'mrs', 'ms', 'dr', 'prof', 'eg', 'ie', 'e', 'g', 'i', 'approx', 'vs', 'rs', 'no', 'vol', 'dept'}:
+                                        is_abbreviation = True
+                                        
+                            if not is_abbreviation:
+                                words = cand_clean.split()
+                                should_emit = False
+                                if any(p in matched_punct for p in ['!', '?', '।', '\n']):
+                                    should_emit = len(words) >= 4 and len(cand_clean) >= 12
+                                elif '.' in matched_punct:
+                                    should_emit = len(words) >= 5 or len(cand_clean) >= 20
+                                elif ',' in matched_punct:
+                                    should_emit = len(words) >= 10 and len(cand_clean) >= 40
+                                    
+                                # Opening Clause 1: Require at least 4 words so audio plays for >1.2s, giving background pipeline ample time to prefetch Clause 2
+                                if should_emit and len(clean_speech_accum) == 0 and len(words) < 4:
+                                    should_emit = False
+                                # Subsequent Clauses: Avoid tiny 1-3 word fragments that starve the audio buffer; accumulate until >= 6 words
+                                elif should_emit and len(clean_speech_accum) > 0 and len(words) < 6:
+                                    should_emit = False
+                                    
+                                if should_emit:
+                                    stream_buf = test_str[m.end():]
+                                    clean_speech_accum.append(cand_clean)
+                                    yield (cand_clean, definitive_lang, False, full_raw)
+                                    break
+                    except Exception:
+                        pass
+                        
+            # Final remaining clause
+            if stream_buf:
+                leftover = re.sub(r'\[[A-Za-z0-9_ -]+:[^\]]*\]', '', stream_buf)
+                leftover = re.sub(r'\[(?:REMEMBER|FORGET|TIMER|TIMER_?SET|TIMER_?PROMPT|TIMER_?QUERY|TIMER_?CANCEL|CANCEL_TIMER|STOPWATCH|ALARM_?SET|ALARM_?CANCEL|CANCEL_BRIEFING|LANG|ANSWER|FOLLOWUP)[^\]]*\]', '', leftover)
+                leftover = re.sub(r'\[[^\]]*\]', '', leftover)
+                leftover = re.sub(r'<think>.*?</think>', '', leftover, flags=re.DOTALL)
+                leftover = re.sub(r'</?think>', '', leftover)
+                leftover = re.sub(r'\b(?:FOLLOWUP|ANSWER|LANG):\s*(?:NO|YES|[A-Za-z0-9_-]+)', '', leftover, flags=re.IGNORECASE)
+                leftover_clean = re.sub(r'[*_#`~|\[\]]', '', leftover).strip()
+                leftover_clean = re.sub(r'\b(?:FOLLOWUP|ANSWER)\b', '', leftover_clean, flags=re.IGNORECASE).strip()
+                if leftover_clean and re.search(r'[\w\u0900-\u097F\u0A80-\u0AFF]', leftover_clean):
+                    clean_speech_accum.append(leftover_clean)
+                    yield (leftover_clean, definitive_lang, True, full_raw)
+                    
+            # Complete raw processing & memory/timer side effects
+            full_clean = " ".join(clean_speech_accum).strip()
+            full_clean = re.sub(r'<think>.*?</think>', '', full_clean, flags=re.DOTALL)
+            full_clean = re.sub(r'</?think>', '', full_clean).strip()
+            if full_clean:
+                conversation_history.append({"role": "user", "content": user_query})
+                conversation_history.append({"role": "assistant", "content": full_clean})
+
+            pending_followup_intent = extract_followup_decision(full_raw, full_clean)
+            if pending_followup_intent:
+                print(f"[PREDICTIVE FOLLOW-UP]: Groq invited follow-up continuation. (Answer: '{full_clean}')")
+            else:
+                print(f"[PREDICTIVE FOLLOW-UP]: None / Closed action.")
+                
+            # Handle [CANCEL_BRIEFING] tag
+            if "[CANCEL_BRIEFING]" in full_raw:
+                active_briefing["is_active"] = False
+                active_briefing["topic_id"] = None
+                print("[ACTIVE BRIEFING CANCELLED VIA LLM INTENT]")
+
+            # Handle [WIPE_MEMORY] tag
+            if "[WIPE_MEMORY]" in full_raw or "[WIPE_ALL]" in full_raw:
+                wipe_all_memories()
+                print("[LLM WIPE_MEMORY EXECUTED]")
+
+            # Handle [REMEMBER: ...] tag
+            rem_match = re.search(r'\[REMEMBER:\s*(.*?)\]', full_raw)
+            if rem_match:
+                new_fact = rem_match.group(1).strip()
+                if new_fact:
+                    add_user_memory(new_fact, lang=definitive_lang)
+                    print(f"[MEMORY SAVED VIA LLM]: {new_fact}")
+
+            # Handle [FORGET: ...] tag
+            forg_match = re.search(r'\[FORGET:\s*(.*?)\]', full_raw)
+            if forg_match:
+                to_forget = forg_match.group(1).strip().lower()
+                remove_user_memory(to_forget)
+                notes = memory_data.get("notes", [])
+                memory_data["notes"] = [n for n in notes if to_forget not in n.lower()]
+                save_memory(memory_data)
+                print(f"[MEMORY FORGOTTEN]: {to_forget}")
+                    
+            # Handle [TIMER_SET: <seconds> | <name> | <completion_message>]
+            tim_set_match = re.search(r'\[TIMER_?SET:\s*(\d+)\s*\|\s*([^\|\]]+)(?:\|\s*([^\]]*))?\]', full_raw)
+            if tim_set_match:
+                secs = int(tim_set_match.group(1))
+                t_name = tim_set_match.group(2).strip()
+                c_msg = tim_set_match.group(3).strip() if tim_set_match.group(3) else ""
+                t_context = "cooking" if any(k in t_name.lower() for k in ["maggi", "tea", "chai", "egg", "milk", "rice", "pasta"]) else "general"
+                dispatch_async(start_timer_instance(duration=secs, name=t_name, context=t_context, completion_phrase=c_msg, lang=definitive_lang))
+                print(f"[LLM TIMER_SET EXECUTED]: {secs}s for '{t_name}'")
+
+            # Handle [TIMER_PROMPT: <seconds> | <dish> | <confirmation_question>]
+            tim_prompt_match = re.search(r'\[TIMER_PROMPT:\s*(\d+)\s*\|\s*([^\|\]]+)(?:\|\s*([^\]]*))?\]', full_raw)
+            if tim_prompt_match:
+                p_secs = int(tim_prompt_match.group(1))
+                p_dish = tim_prompt_match.group(2).strip()
+                pending_timer_suggestion = {
+                    "dish_key": p_dish.lower(),
+                    "dish_display": p_dish,
+                    "seconds": p_secs,
+                    "prompt": full_clean,
+                    "confirm": f"Starting your {format_duration_desc(p_secs, definitive_lang)} timer for {p_dish} now!",
+                    "complete": f"Shravan, {format_duration_desc(p_secs, definitive_lang)} timer has been done for your {p_dish}! Look at your {p_dish}, is it cooked?",
+                    "lang": definitive_lang,
+                    "timestamp": time.time()
+                }
+                dispatch_async(broadcast("cooking_suggestion", pending_timer_suggestion))
+                print(f"[LLM TIMER_PROMPT RECORDED]: {p_dish} ({p_secs}s)")
+
+            # Handle [TIMER_CANCEL: <name_or_all>]
+            tim_cancel_match = re.search(r'\[TIMER_CANCEL:\s*([^\]]*)\]', full_raw)
+            if tim_cancel_match:
+                c_target = tim_cancel_match.group(1).strip().lower()
+                is_all = c_target in ["all", "sabhi", "sab", ""]
+                if is_all:
+                    dispatch_async(cancel_timer_instance(cancel_all=True))
+                else:
+                    dispatch_async(cancel_timer_instance(name=c_target))
+                print(f"[LLM TIMER_CANCEL EXECUTED]: {c_target}")
+
+            # Handle [STOPWATCH: START|STOP|LAP|RESET|QUERY]
+            sw_match = re.search(r'\[STOPWATCH:\s*(START|STOP|LAP|RESET|QUERY)\]', full_raw, re.IGNORECASE)
+            if sw_match:
+                action = sw_match.group(1).lower()
+                handle_stopwatch_action(action, definitive_lang)
+                print(f"[LLM STOPWATCH EXECUTED]: {action}")
+
+            # Handle [ALARM_SET: <time_str> | <label>]
+            al_set_match = re.search(r'\[ALARM_SET:\s*([^\|\]]+)(?:\|\s*([^\]]*))?\]', full_raw)
+            if al_set_match:
+                al_time = al_set_match.group(1).strip()
+                al_label = al_set_match.group(2).strip() if al_set_match.group(2) else "Alarm"
+                dispatch_async(start_alarm_instance(time_str=al_time, label=al_label, lang=definitive_lang))
+                print(f"[LLM ALARM_SET EXECUTED]: {al_time} ({al_label})")
+
+            # Handle [ALARM_CANCEL: <time_or_all>]
+            al_cancel_match = re.search(r'\[ALARM_CANCEL:\s*([^\]]*)\]', full_raw)
+            if al_cancel_match:
+                al_target = al_cancel_match.group(1).strip().lower()
+                is_all = al_target in ["all", "sabhi", "sab", ""]
+                if is_all:
+                    dispatch_async(cancel_alarm_instance(cancel_all=True))
+                else:
+                    dispatch_async(cancel_alarm_instance(time_str=al_target))
+                print(f"[LLM ALARM_CANCEL EXECUTED]: {al_target}")
+
+            # Handle legacy [TIMER: ...] tag
+            tim_match = re.search(r'\[TIMER:\s*(\d+)\]', full_raw)
+            if tim_match:
+                secs = int(tim_match.group(1))
+                lower_q = user_query.lower()
+                is_explicit_timer = any(w in lower_q for w in ["timer", "minute", "second", "alarm", "remind", "time it", "अलार्म", "टाइमर", "સેકન્ડ", "મિનિટ"])
+                if is_explicit_timer:
+                    dispatch_async(start_timer_instance(secs, f"{secs} second timer", lang=definitive_lang))
+                    if not clean_speech_accum:
+                        confirm_map = {
+                            "en": f"Starting your {secs}-second timer now!",
+                            "hi": f"आपका {secs} सेकंड का टाइमर शुरू हो गया है!",
+                            "mr": f"तुमचा {secs} सेकंदांचा टायमर सुरू झाला आहे!",
+                            "gu": f"તમારો {secs} સેકન્ડનો ટાઈમર શરૂ થઈ ગયો છે!"
+                        }
+                        c_text = confirm_map.get(definitive_lang, confirm_map["en"])
+                        clean_speech_accum.append(c_text)
+                        yield (c_text, definitive_lang, True, full_raw)
+                else:
+                    print(f"[UNSOLICITED TIMER BLOCKED]: Groq emitted [TIMER: {secs}] without explicit user request.")
+
+            # Handle legacy [CANCEL_TIMER] tag
+            lower_q = user_query.lower()
+            if '[CANCEL_TIMER' in full_raw or any(w in lower_q for w in ["cancel timer", "stop timer", "timer band", "timer cancel", "timer roko", "timer hatao", "टाइमर बंद", "टाइमर रोको"]):
+                if active_timers:
+                    print(f"[TIMER CANCELLED]: Cancelling {len(active_timers)} active timer(s)")
+                    dispatch_async(cancel_timer_instance(cancel_all=True))
+                    if not clean_speech_accum:
+                        cancel_map = {
+                            "en": "Your timer has been cancelled.",
+                            "hi": "आपका टाइमर रद्द कर दिया गया है।",
+                            "mr": "तुमचा टायमर रद्द करण्यात आला आहे.",
+                            "gu": "તમારો ટાઈમર રદ કરવામાં આવ્યો છે."
+                        }
+                        c_text = cancel_map.get(definitive_lang, cancel_map["en"])
+                        clean_speech_accum.append(c_text)
+                        yield (c_text, definitive_lang, True, full_raw)
+            return
+        except urllib.error.HTTPError as e:
+            err_msg = e.read().decode('utf-8', errors='ignore')
+            print(f"Groq LLM HTTP Error {e.code} (attempt {attempt+1}): {err_msg}")
+            if e.code == 429:
+                if len(GROQ_KEYS) > 1 and attempt < len(GROQ_KEYS):
+                    groq_key_index = (groq_key_index + 1) % len(GROQ_KEYS)
+                    print(f"[GROQ ROTATION (LLM)]: Rotated to key #{groq_key_index + 1}")
+                    continue
+                else:
+                    delay_match = re.search(r'try again in ([\d\.]+)s', err_msg)
+                    if delay_match:
+                        req_wait = float(delay_match.group(1))
+                        if req_wait <= 5.0 and attempt < len(GROQ_KEYS) + 1:
+                            retry_wait = req_wait + 0.3
+                            print(f"[GROQ 429 BACKOFF]: Waiting {retry_wait:.1f}s before retry...")
+                            time.sleep(retry_wait)
+                            continue
+                    lang_fallback = {
+                        "gu": "દૈનિક મર્યાદા પૂરી થઈ ગઈ છે. કૃપા કરીને થોડીવાર પછી પૂછો.",
+                        "mr": "दैनिक मर्यादा संपली आहे. कृपया थोड्या वेळाने विचारा.",
+                        "hi": "दैनिक टोकन सीमा समाप्त हो गई है। कृपया थोड़ी देर बाद पूछें।",
+                        "en": "Daily token limit reached. Please try again shortly."
+                    }
+                    flang = det_lang or "en"
+                    yield (lang_fallback.get(flang, lang_fallback["en"]), flang, True, "")
+                    return
+            break
+        except Exception as e:
+            print(f"Groq LLM Streaming Error: {e}")
+            break
+            
+    lang_generic_fallback = {
+        "gu": "મને માફ કરશો, સર્વર સાથે સંપર્ક થઈ શક્યો નથી.",
+        "mr": "माफ करा, सर्व्हरशी संपर्क होऊ शकला नाही.",
+        "hi": "माफ़ कीजिए, सर्वर से संपर्क नहीं हो सका।",
+        "en": "I'm sorry, I couldn't reach the server."
+    }
+    flang = det_lang or "en"
+    yield (lang_generic_fallback.get(flang, lang_generic_fallback["en"]), flang, True, "")
+
+def run_groq_llm(user_query: str, detected_lang: str | None = None) -> tuple[str, str, str, float]:
+    """Synchronous backwards-compatible wrapper collecting all stream_groq_llm clauses."""
+    t0 = time.time()
+    clauses = []
+    definitive_lang = detected_lang or "en"
+    full_raw = ""
+    for clause, lang, is_last, raw_reply in stream_groq_llm(user_query, detected_lang=detected_lang):
+        clauses.append(clause)
+        definitive_lang = lang
+        full_raw = raw_reply
+    dt = (time.time() - t0) * 1000
+    clean_speech = " ".join(clauses).strip()
+    return clean_speech, definitive_lang, full_raw, dt
+
+
+# --- Step 3: Text to Speech ---
+MARATHI_DEV_WORDS = {
+    'मला', 'तुला', 'आम्हाला', 'तुम्हाला', 'माझा', 'माझी', 'माझे', 'माझं', 'तुझा', 'तुझी', 'तुझे', 'तुझं',
+    'आपण', 'तुम्ही', 'काय', 'काया', 'काई', 'कसा', 'कशी', 'कसे', 'कसं', 'कुठे', 'कुठं', 'कधी', 'कशाला', 'किती',
+    'आहे', 'आहेस', 'आहेत', 'आहोत', 'नाही', 'नाहीत', 'नाहीस', 'नको', 'होता', 'होती', 'होते',
+    'झाला', 'झाली', 'झाले', 'झालं', 'चाललंय', 'चालले', 'करतो', 'करते', 'करतात', 'करतोस', 'करू',
+    'शकतेस', 'शकतो', 'सांग', 'सांगा', 'बोल', 'बोला', 'ऐक', 'ऐका', 'लागला', 'लागली', 'लागले',
+    'जेवला', 'जेवली', 'जेवलास', 'अभ्यासात', 'पाऊस', 'हवामान', 'छान', 'बरं', 'नक्कीच', 'पाहिजे',
+    'मदत', 'सकाळ', 'संध्याकाळ', 'रात्र', 'मित्रा', 'मित्रांनो', 'कळलं', 'धन्यवाद', 'शुभ',
+    'माज़नाओ', 'माजनाओ', 'माजन', 'माझ', 'माझाओ', 'माजा', 'राहतो', 'राहते', 'हवी', 'कशा',
+    'कूथे', 'कुथे', 'रातो', 'रहातो', 'मी', 'मीक', 'ुठे'
+}
+
+GUJARATI_DEV_WORDS = {
+    'केम', 'छो', 'छे', 'छु', 'छीए', 'शु', 'शू', 'शूछे', 'शूचे', 'शुछे', 'शुचे', 'सूस', 'सस', 'तमे', 'તમે',
+    'तमारु', 'तमारू', 'तमारी', 'तमारा', 'तमने', 'मने', 'मारु', 'मारू', 'मारी', 'मारा', 'અમારું', 'अमारु',
+    'अमारू', 'अमारी', 'मजामा', 'બધું', 'बधु', 'સરસ', 'सरस', 'નથી', 'नथी', 'માટે', 'माटे',
+    'थयु', 'थशे', 'थाए', 'હવે', 'हवे', 'કેવું', 'केवु', 'केवा', 'જોઈએ', 'जोइए', 'भणवा', 'વાત', 'वात',
+    'ખબર', 'खबर', 'આવો', 'आवो', 'જાઓ', 'जाओ', 'મજદ', 'शूसे', 'शुसे', 'શૂં', 'શું', 'નામ', 'नाम'
+}
+
+HINDI_DEV_WORDS = {
+    'क्या', 'कैसे', 'कैसा', 'कैसी', 'कहाँ', 'कब', 'क्यों', 'क्यो', 'कौन', 'है', 'हैं', 'हूँ',
+    'था', 'थे', 'थी', 'नहीं', 'मत', 'और', 'लेकिन', 'मगर', 'बताओ', 'मुझे', 'तुम्हारा', 'तुम्हारी',
+    'आपका', 'आपकी', 'रहा', 'रही', 'रहे', 'पढ़ाई', 'मौसम', 'बारिश', 'खाना', 'पानी', 'मेरा', 'मेरी', 'मेरे',
+    'तुम', 'तू', 'आप', 'किधर', 'की', 'दर', 'रहते', 'रहती', 'रहता', 'रहना', 'हो', 'कर', 'करो',
+    'करते', 'करती', 'करता', 'बोल', 'बोलो', 'सुन', 'सुनो', 'सकते', 'सकता', 'सकती', 'इधर', 'उधर',
+    'यहाँ', 'वहाँ', 'ये', 'वो', 'यह', 'वह', 'बात', 'कुछ', 'कोई', 'सब', 'अपना', 'अपनी', 'अपने',
+    'अच्छा', 'ठीक', 'नाम'
+}
+
+MARATHI_ROMAN_WORDS = {
+    'mala', 'tula', 'aamhala', 'tumhala', 'majha', 'majhi', 'majhe', 'majhan', 'tujha', 'tujhi', 'tujhe',
+    'tujhan', 'aapan', 'tumhi', 'aahe', 'ahe', 'aahes', 'aahet', 'aahot', 'naahi', 'nahi', 'nahit',
+    'nako', 'hota', 'hoti', 'hote', 'jhala', 'jhali', 'jhale', 'zaala', 'zaali', 'zaale', 'kay',
+    'kasa', 'kashi', 'kase', 'kasan', 'kuthe', 'kadhi', 'kashala', 'kiti', 'chalalay', 'challey',
+    'karto', 'karte', 'kartat', 'kartos', 'karu', 'shaktes', 'shakto', 'sang', 'sanga', 'lagli',
+    'jevala', 'jevalas', 'pahije', 'abhyasat', 'abyasat', 'chhan', 'baran', 'paaus', 'khoop',
+    'nakkich', 'madad', 'konahim', 'kon', 'koni', 'koon', 'ahi', 'rato', 'uthhe', 'nao', 'kaay', 'miek', 'mii',
+    'tuza', 'tuzha', 'maza', 'mazha', 'nav', 'naav'
+}
+
+GUJARATI_ROMAN_WORDS = {
+    'kem', 'cho', 'chho', 'chhe', 'che', 'chhu', 'chhoo', 'chhie', 'nathi', 'nthi', 'tame', 'tamaru',
+    'tamari', 'tamara', 'tamne', 'mane', 'maru', 'mari', 'mara', 'amaru', 'amari', 'majama', 'badhu',
+    'saras', 'aaje', 'kaale', 'have', 'mate', 'lidhe', 'joiye', 'jovu', 'aavo', 'jao',
+    'khabar', 'vaat', 'thay', 'thayu', 'thase', 'thashe', 'kevu', 'kyare', 'barabar', 'bhanva',
+    'sushen', 'shus', 'marunan', 'shoo', 'tamarunan', 'tamarun', 'sinter', 'tamaro'
+}
+
+HINDI_ROMAN_WORDS = {
+    'main', 'mai', 'hum', 'hume', 'mujhko', 'mera', 'meri', 'mere', 'tu', 'tum', 'tumhe',
+    'tumhara', 'tumhari', 'tumhare', 'aap', 'aapka', 'aapki', 'aapke', 'yeh', 'ye', 'woh', 'wo',
+    'kya', 'kyu', 'kyun', 'kyo', 'kaise', 'kaisa', 'kaisi', 'kab', 'kahan', 'kidhar', 'kisne',
+    'hai', 'hain', 'hoon', 'hun', 'था', 'थे', 'थी', 'thhe', 'hoga', 'hogi', 'hoge',
+    'nahi', 'nahin', 'mat', 'aur', 'ya', 'lekin', 'magar', 'toh', 'bhi', 'bas',
+    'bahut', 'bohot', 'thoda', 'thodi', 'achha', 'theek', 'bilkul', 'sahi', 'batao',
+    'bolo', 'suno', 'rahe', 'rahi', 'raha', 'padhai', 'mausam'
+}
+
+ENGLISH_WORDS = {
+    'the', 'is', 'at', 'which', 'on', 'and', 'a', 'an', 'in', 'to', 'for', 'of', 'with', 'about',
+    'from', 'up', 'down', 'out', 'over', 'then', 'here', 'there', 'when', 'where', 'why', 'how',
+    'all', 'any', 'both', 'each', 'few', 'more', 'some', 'no', 'not', 'so', 'than', 'too', 'very',
+    'can', 'will', 'just', 'should', 'now', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what',
+    'would', 'could', 'have', 'has', 'had', 'do', 'does', 'did', 'be', 'am', 'are', 'was', 'were',
+    'my', 'your', 'his', 'her', 'its', 'our', 'their', 'weather', 'sunny', 'temperature', 'today',
+    'time', 'timer', 'alarm', 'hello', 'hi', 'sure', 'sorry', 'please', 'thanks', 'thank', 'studies',
+    'help', 'name', 'tell', 'telling', 'see', 'still', 'keep', 'sentence', 'end', 'nickname', 'friend',
+    'call', 'calling', 'who', 'user', 'say', 'saying', 'speak', 'speaking', 'shoe', 'shu', 'shoo'
+}
+
+def detect_language(text: str, user_query: str = '', raw_reply: str = '', forced_lang: str | None = None) -> str:
+    """
+    Precision 4-language detector for Shravan (English, Marathi, Gujarati, Hindi).
+    Handles mixed scripts, phonetic mis-transcriptions, and Latinized text.
+    """
+    if forced_lang and forced_lang in ['en', 'hi', 'mr', 'gu']:
+        return forced_lang
+        
+    explicit_lang = extract_explicit_language_request(user_query) or extract_explicit_language_request(text)
+    if explicit_lang:
+        return explicit_lang
+        
+    text = sanitize_mixed_indic_script(text)
+    user_query = sanitize_mixed_indic_script(user_query)
+    combined = (user_query + ' ' + text).strip()
+    
+    # 1. Check for dominant English letters / sentences
+    latin_words = set(re.findall(r'[a-zA-Z]+', combined.lower()))
+    devanagari_chars = len(re.findall(r'[\u0900-\u097F]', combined))
+    gujarati_chars = len(re.findall(r'[\u0A80-\u0AFF]', combined))
+    
+    # If predominantly Latin letters (English or Romanized Indic)
+    if len(latin_words) >= 2 and (len(latin_words) * 4) > (devanagari_chars + gujarati_chars):
+        en_score = len(latin_words.intersection(ENGLISH_WORDS))
+        mr_score = len(latin_words.intersection(MARATHI_ROMAN_WORDS))
+        gu_score = len(latin_words.intersection(GUJARATI_ROMAN_WORDS))
+        hi_score = len(latin_words.intersection(HINDI_ROMAN_WORDS))
+        
+        has_latin_gu = any(w in ['tamarunan', 'tamarun', 'sinter', 'marunan', 'sushen', 'kevu'] or w.startswith('tamaru') or w.startswith('maru') for w in latin_words)
+        has_latin_mr = any(w in ['tuza', 'tuzha', 'maza', 'mazha', 'kaay', 'aahe', 'chalalay'] or w.startswith('tujh') or w.startswith('maj') for w in latin_words)
+        
+        if has_latin_gu and en_score <= 1:
+            return 'gu'
+        if has_latin_mr and en_score <= 1:
+            return 'mr'
+            
+        # If clearly English sentence
+        if en_score >= 2 and en_score >= mr_score and en_score >= gu_score and en_score >= hi_score:
+            return 'en'
+        if gu_score > 0 and gu_score >= mr_score and gu_score >= hi_score and gu_score > en_score:
+            return 'gu'
+        if mr_score > 0 and mr_score >= hi_score and mr_score > en_score:
+            return 'mr'
+        if hi_score > 0 and hi_score > en_score:
+            return 'hi'
+        if en_score > 0:
+            return 'en'
+            
+    # 2. Check for Devanagari or Gujarati Script
+    if devanagari_chars > 0 or gujarati_chars > 0:
+        # Extract all Devanagari & Gujarati tokens
+        tokens = set(re.findall(r'[\u0900-\u097F\u0A80-\u0AFF]+', combined))
+        
+        MARATHI_DISTINCT_MARKERS = [
+            'काय', 'काया', 'काई', 'कय', 'કાય', 'કાયા', 'કાઈ', 'कयाय',
+            'आहे', 'आहेस', 'आहेत', 'आहोत', 'कुठे', 'कुठं', 'कुथे',
+            'तुझा', 'तुझी', 'तुझे', 'तुझं', 'તુજા', 'તુઝા', 'तुज',
+            'तुम्हाला', 'मला', 'आम्हाला', 'तुला', 'तुम्ही',
+            'माझा', 'माझी', 'माझे', 'माझं',
+            'येतोय', 'येतो', 'येते', 'येतात', 'ऐकू', 'ऐका', 'सांग', 'सांगा',
+            'कसा', 'कशी', 'कसे', 'कसं', 'कशाला', 'कधी', 'किती',
+            'राहतो', 'राहते', 'रातो', 'रहातो', 'चाललंय', 'झाला', 'झाली', 'झाले', 'झालं'
+        ]
+        GUJARATI_DISTINCT_MARKERS = [
+            'શું', 'શુ', 'શૂં', 'કેમ', 'કેવું', 'કેવી', 'કેવો', 'છે', 'છો', 'છીએ', 'છું', 
+            'તમારું', 'તમારી', 'તમારા', 'તમને', 'તારું', 'તારી', 'તારા', 'તમે',
+            'મારું', 'મારી', 'મારા', 'મને', 'અમારું', 'અમારી', 'અમને',
+            'ક્યાં', 'ક્યારે', 'નથી', 'બધું', 'હશે', 'થશે', 'આવે', 'સંભળાય',
+            'જોઈએ', 'મજામાં', 'શૂસે', 'शुसे', 'શૂછે', 'શૂચે', 'शूस', 'सूस'
+        ]
+        
+        has_mr_distinct = any(any(md in tok for md in MARATHI_DISTINCT_MARKERS) for tok in tokens)
+        has_gu_distinct = any(any(gd in tok for gd in GUJARATI_DISTINCT_MARKERS) for tok in tokens)
+        
+        if has_gu_distinct and not has_mr_distinct:
+            return 'gu'
+        if has_mr_distinct and not has_gu_distinct:
+            return 'mr'
+            
+        mr_count = 0
+        gu_count = 0
+        hi_count = 0
+        
+        for tok in tokens:
+            # Check Gujarati words (script or phonetic Devanagari)
+            if any(gw in tok for gw in GUJARATI_DEV_WORDS) or re.search(r'[\u0A80-\u0AFF]', tok):
+                # But check if tok is a mixed hallucination of Marathi (e.g. માજণ, काया)
+                if any(mw in tok for mw in ['काय', 'काया', 'काई', 'आहे', 'कुठे', 'कसे', 'मला']):
+                    mr_count += 2
+                else:
+                    gu_count += 1
+            # Check Marathi words
+            if any(mw in tok for mw in MARATHI_DEV_WORDS):
+                mr_count += 1
+            # Check Hindi words
+            if any(hw in tok for hw in HINDI_DEV_WORDS):
+                hi_count += 1
+                
+        # Resolve between the three Indic languages
+        if gu_count > 0 and gu_count > mr_count and gu_count >= hi_count:
+            return 'gu'
+        if mr_count > 0 and mr_count > gu_count and mr_count >= hi_count:
+            return 'mr'
+            
+        # Tie between Gujarati and Marathi
+        if gu_count > 0 and mr_count > 0 and gu_count == mr_count:
+            # If native Gujarati script is present and no distinct Marathi verbs, Gujarati wins
+            if gujarati_chars > 0 and not has_mr_distinct:
+                return 'gu'
+            # If distinct Marathi question words exist (e.g. काय, आहे), Marathi wins
+            if has_mr_distinct:
+                return 'mr'
+            return 'gu'
+            
+        if hi_count > 0 and hi_count > mr_count and hi_count > gu_count:
+            return 'hi'
+        if gu_count > 0 and gu_count >= hi_count:
+            return 'gu'
+        if mr_count > 0:
+            return 'mr'
+        if hi_count > 0:
+            return 'hi'
+            
+        # Fallback for Indic characters: text with Devanagari or Gujarati script can never be English!
+        if gujarati_chars > 0:
+            return 'gu'
+        if has_mr_distinct:
+            return 'mr'
+        if devanagari_chars > 0:
+            return 'hi'
+            
+    # 3. Check explicit LLM tag if available as fallback
+    if raw_reply:
+        tag_match = re.search(r'\[LANG:\s*(EN|HI|GU|MR)\]', raw_reply, re.IGNORECASE)
+        if tag_match:
+            return tag_match.group(1).lower()
+            
+    return 'en'
+
+def normalize_speech_for_tts(text: str, lang: str = "en") -> str:
+    """
+    Phonetically normalizes currency, symbols, units, numbers, and abbreviations for TTS engines.
+    Converts raw accounting numbers (e.g. ₹200.00, 270.00 rupees, +0.00%) into natural, fluent human speech.
+    Execution latency: < 0.15ms.
+    """
+    t = text
+    
+    # 0. Target vocabulary by language
+    if lang == 'gu':
+        curr_inr = 'રૂપિયા'
+        paise_inr = 'પૈસા'
+        curr_usd = 'ડૉલર'
+        cents_usd = 'સેન્ટ્સ'
+        pct = 'ટકા'
+        deg = 'ડિગ્રી'
+        to_word = 'થી'
+    elif lang == 'mr':
+        curr_inr = 'रुपये'
+        paise_inr = 'पैसे'
+        curr_usd = 'डॉलर'
+        cents_usd = 'सेंट्स'
+        pct = 'टक्के'
+        deg = 'अंश'
+        to_word = 'ते'
+    elif lang == 'hi':
+        curr_inr = 'रुपये'
+        paise_inr = 'पैसे'
+        curr_usd = 'डॉलर'
+        cents_usd = 'सेंट्स'
+        pct = 'प्रतिशत'
+        deg = 'डिग्री'
+        to_word = 'से'
+    else:
+        curr_inr = 'rupees'
+        paise_inr = 'paise'
+        curr_usd = 'dollars'
+        cents_usd = 'cents'
+        pct = 'percent'
+        deg = 'degrees'
+        to_word = 'to'
+
+    # 1. Strip integer zero decimals like 200.00 -> 200, 1000.00 -> 1000, 54.00 -> 54, 0.00 -> 0
+    t = re.sub(r'(?<=\d)\.00(?!\d)', '', t)
+
+    # 2. Neutral zero percentage/change like +0.00%, -0.00%, +0%, +0.0% -> 0%
+    t = re.sub(r'[+-]0(?:\.0+)?\s*%', '0%', t)
+    t = re.sub(r'\(\s*[+-]0(?:\.0+)?\s*,\s*0%\s*\)', '(unchanged)', t)
+
+    # 3. Clean .0 on quantities/temperatures/percentages/durations (e.g. 31.0°C -> 31°C, 5.0% -> 5%, 5.0 mins -> 5 mins)
+    # Safeguard: Do not strip version numbers like Python 3.10, Android 14.0, GPT-4.0, v2.0, USB 3.0
+    def repl_dot_zero(m):
+        prefix = m.group(1) or ""
+        num = m.group(2)
+        suffix = m.group(3) or ""
+        if prefix and re.search(r'\b(?:v|ver|version|android|ios|python|gpt|usb|web)\s*$', prefix, re.IGNORECASE):
+            return m.group(0)
+        return f"{prefix}{num}{suffix}"
+
+    unit_suffixes = r'(?:%|°|C|F|kg|g|gm|l|ltr|ltrs|liter|liters|litre|litres|km|m|meter|meters|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours|day|days|week|weeks|month|months|year|years|rupees?|dollars?|रुपये|રૂપિયા|डिग्री|प्रतिशत|टक्के|ટકા)'
+    t = re.sub(r'(\b[a-zA-Z]*\s*)?(\d+)\.0(?!\d)(\s*' + unit_suffixes + r'\b|\s*[°%])', repl_dot_zero, t, flags=re.IGNORECASE)
+
+    # 4. Limit overly long floating decimals (e.g. 14.285714 -> 14.29, 3.333333 -> 3.33)
+    # Safeguard: Never truncate micro-numbers / crypto amounts like 0.00001435 or 0.005 to 0!
+    def repl_long_decimal(m):
+        whole = m.group(1)
+        dec = m.group(2)
+        val = float(f"{whole}.{dec}")
+        if val == 0:
+            return "0"
+        if val < 0.01:
+            dec_clean = dec[:8].rstrip('0')
+            return f"{whole}.{dec_clean}" if dec_clean else whole
+        if len(dec) > 2:
+            rounded = round(float(f"0.{dec}"), 2)
+            dec_str = f"{rounded:.2f}"[2:].rstrip('0')
+            return f"{whole}.{dec_str}" if dec_str else whole
+        return m.group(0)
+    t = re.sub(r'\b(\d+)\.(\d{3,})\b', repl_long_decimal, t)
+
+    # 5. Currency with Rupees and Paise:
+    # Match ₹258.90 or ₹258.50 -> "258 rupees and 90 paise" (or "258 रुपये 90 पैसे")
+    # Match ₹0.50 -> "50 paise" (or "50 पैसे")
+    def repl_inr_paise(m):
+        rs = m.group(1).replace(',', '')
+        paise_str = m.group(2)
+        paise_val = int(paise_str.ljust(2, '0')[:2])
+        if rs == '0' or rs == '':
+            return f"{paise_val} {paise_inr} "
+        if paise_val == 0:
+            return f"{rs} {curr_inr} "
+        if lang == 'en':
+            return f"{rs} {curr_inr} and {paise_val} {paise_inr} "
+        else:
+            return f"{rs} {curr_inr} {paise_val} {paise_inr} "
+
+    # Pattern for ₹258.90 or Rs. 258.90
+    t = re.sub(r'(?:Rs\.?|INR|₹)\s*(\d[\d,]*)\.(\d{1,2})\b', repl_inr_paise, t, flags=re.IGNORECASE)
+    # Pattern for 258.90 rupees / 258.90 Rs
+    t = re.sub(r'\b(\d[\d,]*)\.(\d{1,2})\s*(?:Rs\.?|₹|INR|rupees?|रुपये|રૂપિયા)\b', repl_inr_paise, t, flags=re.IGNORECASE)
+
+    # 6. Standard Integer Currency: ₹270, Rs. 1000, 500 INR
+    inr_pattern = r'(?:Rs\.?|INR|₹)\s*([\d,]+(?:\s*(?:lakhs?|crores?|k|m|b|thousand|trillion|लाख|करोड़|हजार|લાખ|કરોડ))?)\b\s*(?:INR|rupees?)?'
+    def repl_inr_int(m):
+        amt = m.group(1).strip()
+        return f"{amt} {curr_inr} "
+    t = re.sub(inr_pattern, repl_inr_int, t, flags=re.IGNORECASE)
+    t = re.sub(r'([\d,]+)\s*(?:Rs\.?|₹|INR)\b', rf'\1 {curr_inr} ', t, flags=re.IGNORECASE)
+
+    # 7. USD Dollars & Cents: $50.75 -> 50 dollars and 75 cents
+    def repl_usd_cents(m):
+        dol = m.group(1).replace(',', '')
+        cents_str = m.group(2)
+        cents_val = int(cents_str.ljust(2, '0')[:2])
+        if dol == '0' or dol == '':
+            return f"{cents_val} {cents_usd} "
+        if cents_val == 0:
+            return f"{dol} {curr_usd} "
+        if lang == 'en':
+            return f"{dol} {curr_usd} and {cents_val} {cents_usd} "
+        else:
+            return f"{dol} {curr_usd} {cents_val} {cents_usd} "
+
+    t = re.sub(r'\$\s*(\d[\d,]*)\.(\d{1,2})\b', repl_usd_cents, t, flags=re.IGNORECASE)
+    t = re.sub(r'\$\s*([\d,]+(?:\s*(?:million|billion|trillion|k|m|b))?)\b\s*(?:USD|dollars?)?', rf'\1 {curr_usd} ', t, flags=re.IGNORECASE)
+    t = re.sub(r'([\d,]+)\s*(?:\$|USD)\b', rf'\1 {curr_usd} ', t, flags=re.IGNORECASE)
+
+    # Clean up redundant suffixes
+    t = re.sub(r'\b(dollars?|डॉलर|ડૉલર)\s+USD\b', r'\1', t, flags=re.IGNORECASE)
+    t = re.sub(r'\b(rupees?|रुपये|રૂપિયા)\s+INR\b', r'\1', t, flags=re.IGNORECASE)
+    t = re.sub(r'\bRs\.?\b', curr_inr, t, flags=re.IGNORECASE)
+    t = t.replace('₹', ' ' + curr_inr)
+
+    # 8. Percentage: '5%' -> '5 percent' / '5 प्रतिशत' / '5 ટકા' / '5 टक्के'
+    t = re.sub(r'([\d,]+(?:\.\d+)?)\s*%', rf'\1 {pct}', t)
+
+    # 9. Degrees Celsius: '28°C' or '28°'
+    t = re.sub(r'([\d,]+(?:\.\d+)?)\s*°\s*C\b', rf'\1 {deg}', t)
+    t = re.sub(r'([\d,]+(?:\.\d+)?)\s*°', rf'\1 {deg}', t)
+
+    # 10. Hyphenated Ranges: '10-15 minutes' -> '10 to 15 minutes'
+    t = re.sub(r'(\d+)\s*[-–—]\s*(\d+)', rf'\1 {to_word} \2', t)
+
+    # 11. Unit Expansions for speech fluency
+    if lang == 'en':
+        t = re.sub(r'\b1\s*kg\b', '1 kilogram', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*kg\b', r'\1 kilograms', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b1\s*gm?\b', '1 gram', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*gm?\b', r'\1 grams', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b1\s*ltr?s?\b', '1 liter', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*ltr?s?\b', r'\1 liters', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b1\s*km\b', '1 kilometer', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*km\b', r'\1 kilometers', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b1\s*sec(?:ond)?s?\b', '1 second', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*sec(?:ond)?s?\b', r'\1 seconds', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b1\s*min(?:ute)?s?\b', '1 minute', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*min(?:ute)?s?\b', r'\1 minutes', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b1\s*hr(?:our)?s?\b', '1 hour', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*hr(?:our)?s?\b', r'\1 hours', t, flags=re.IGNORECASE)
+    elif lang in ['hi', 'mr']:
+        t = re.sub(r'\b(\d+)\s*kg\b', r'\1 किलो', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*gm?\b', r'\1 ग्राम', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*ltr?s?\b', r'\1 लीटर', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*km\b', r'\1 किलोमीटर', t, flags=re.IGNORECASE)
+    elif lang == 'gu':
+        t = re.sub(r'\b(\d+)\s*kg\b', r'\1 કિલો', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*gm?\b', r'\1 ગ્રામ', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*ltr?s?\b', r'\1 લીટર', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(\d+)\s*km\b', r'\1 કિલોમીટર', t, flags=re.IGNORECASE)
+
+    # 12. Spoken Time normalization: '9:02 PM' -> '9 oh 2 PM', '9:00 PM' -> '9 o'clock PM'
+    if lang == 'en':
+        def repl_time_tts(m):
+            h = m.group(1)
+            mins = int(m.group(2))
+            period = m.group(3).upper().replace('.', '')
+            if mins == 0:
+                return f"{h} o'clock {period}"
+            elif mins < 10:
+                return f"{h} oh {mins} {period}"
+            else:
+                return f"{h} {mins} {period}"
+        t = re.sub(r'\b(\d{1,2}):(\d{2})\s*(am|pm|a\.m\.|p\.m\.)', repl_time_tts, t, flags=re.IGNORECASE)
+
+    # Common abbreviations in English TTS
+    if lang == 'en':
+        t = re.sub(r'\bkm/h\b', 'kilometers per hour', t, flags=re.IGNORECASE)
+        t = re.sub(r'\bapprox\.?\b', 'approximately', t, flags=re.IGNORECASE)
+        t = re.sub(r'\be\.g\.?\b', 'for example', t, flags=re.IGNORECASE)
+        t = re.sub(r'\bvs\.?\b', 'versus', t, flags=re.IGNORECASE)
+
+    # 13. Spoken Postal PIN Code & 6-Digit Number Normalization (3-3 digit spoken groups)
+    digit_words = {
+        "en": {"0": "zero", "1": "one", "2": "two", "3": "three", "4": "four", "5": "five", "6": "six", "7": "seven", "8": "eight", "9": "nine"},
+        "hi": {"0": "शून्य", "1": "एक", "2": "दो", "3": "तीन", "4": "चार", "5": "पांच", "6": "छह", "7": "सात", "8": "आठ", "9": "नौ"},
+        "mr": {"0": "शून्य", "1": "एक", "2": "दोन", "3": "तीन", "4": "चार", "5": "पाच", "6": "सहा", "7": "सात", "8": "आठ", "9": "नऊ"},
+        "gu": {"0": "શૂન્ય", "1": "એક", "2": "બે", "3": "ત્રણ", "4": "ચાર", "5": "પાંચ", "6": "છ", "7": "સાત", "8": "આઠ", "9": "નવ"}
+    }
+    def repl_pin_digits(m):
+        digits = m.group(1) + m.group(2)
+        dw = digit_words.get(lang, digit_words["en"])
+        p1 = " ".join(dw.get(d, d) for d in digits[:3])
+        p2 = " ".join(dw.get(d, d) for d in digits[3:])
+        return f"{p1}, {p2}"
+
+    # Target 6-digit postal codes (e.g. 401404 -> four zero one, four zero four)
+    t = re.sub(r'\b(40[0-9]|41[0-9]|42[0-9]|11[0-9]|56[0-9]|60[0-9]|70[0-9]|50[0-9]|38[0-9]|39[0-9])\s*(\d{3})\b(?!\s*(?:rupees|dollars|रुपये|રૂપિયા))', repl_pin_digits, t)
+    def repl_prefixed_pin(m):
+        prefix = m.group(1)
