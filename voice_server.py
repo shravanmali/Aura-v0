@@ -7498,3 +7498,503 @@ async def handle_start(conversation_id: str, flags: int, settings: VoiceAssistan
         # DO NOT send VOICE_ASSISTANT_RUN_END - that kills the newly started mic session!
         try:
             if is_connected():
+                client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_TTS_STREAM_END, None)
+        except Exception:
+            pass
+            
+    # Reset playback interrupt event so future replies can play cleanly!
+    playback_interrupt_event.clear()
+            
+    if recording_task and not recording_task.done():
+        recording_task.cancel()
+        
+    await broadcast("wake_word", wake_label)
+    await broadcast("status", "Listening... (speak now)")
+    
+    audio_buffer = bytearray()
+    if call_audio_bridge.is_active and not wake_word_phrase:
+        is_listening = False
+        print("[TELEPHONY ACTIVE] ESP32 Mic & Speaker streaming continuously for live phone call. Assistant VAD bypassed.")
+        try:
+            client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START, None)
+            client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_STT_START, None)
+            client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START, {"text": "Telecom Call"})
+            client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_TTS_STREAM_START, None)
+        except Exception as e:
+            print(f"[CALL MIC/SPEAKER START ERROR]: {e}")
+        return 0
+    is_listening = True
+    speech_confirmed = False
+    speech_frames_count = 0
+    silence_frames_count = 0
+    total_voiced_frames = 0
+    ambient_noise_samples = []
+    ambient_noise_baseline = 450
+    
+    try:
+        client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START, None)
+        client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_STT_START, None)
+    except Exception as e:
+        print(f"Error sending start events: {e}")
+        
+    async def stop_listening_and_process():
+        try:
+            # Maximum recording window: 16.0 seconds (adaptive silence detection stops it earlier)
+            # 320 ticks of 50ms = 16.0s
+            for tick in range(320):
+                await asyncio.sleep(0.05)
+                global is_listening, speech_confirmed, silence_frames_count, audio_buffer, total_voiced_frames
+                if not is_listening:
+                    break
+                    
+                # E3 Silence Guard: If wake word was triggered, but user stayed silent for > 2.5s and an alert arrives:
+                if not speech_confirmed and tick >= 50 and pending_priority_alerts:
+                    print("[SILENCE GUARD]: User stayed silent for >2.5s after wake word, and priority alert is waiting. Triggering early alert!")
+                    break
+                    
+                # Follow-Up Window Silence Guard:
+                # If listening in zero-wake-word follow-up mode and user has not spoken for > 3.8s:
+                if active_followup_window.get("is_active") and not speech_confirmed and tick >= 76:
+                    print("[FOLLOW-UP SILENCE GUARD]: User stayed silent for 3.8s in follow-up window. Gracefully ending window.")
+                    break
+
+                # Rule 1: Adaptive minimum capture window (250ms voiced minimum)
+                min_bytes = 8000 if total_voiced_frames >= 4 else 14000
+                if len(audio_buffer) < min_bytes:
+                    continue
+                    
+                # --- Voice Activity Detection ---
+                # Solves latency without premature cutoff:
+                # 1. Clean Deep Silence (Sentence Completed): If trailing energy drops to deep room baseline (< 1.15x)
+                #    and user spoke a complete substantive phrase (>= 8 voiced frames), finish in only 10 frames (~320ms)!
+                #    Saves ~800ms of dead latency on normal completed queries!
+                # 2. Hesitation / Thinking Pause: If trailing energy remains slightly active (> 1.15x baseline),
+                #    give the user up to 16 frames (~512ms) to continue their numbers/clauses!
+                # 3. Short Command / Fast-Path: If total voiced frames < 8, terminate at 9 frames (~288ms).
+                
+                current_frame_energy = ambient_noise_baseline
+                if len(audio_buffer) >= 1024:
+                    try:
+                        current_frame_energy = audioop.rms(audio_buffer[-1024:], 2)
+                    except Exception:
+                        current_frame_energy = ambient_noise_baseline
+
+                is_deep_ambient_silence = (current_frame_energy <= ambient_noise_baseline * 1.15)
+
+                if total_voiced_frames >= 8:
+                    silence_limit = 8 if is_deep_ambient_silence else 11   # ~256ms vs ~352ms
+                elif total_voiced_frames >= 4:
+                    silence_limit = 7 if is_deep_ambient_silence else 10   # ~224ms vs ~320ms
+                else:
+                    silence_limit = 7  # ~224ms for short commands like "Stop"
+                
+                if speech_confirmed and silence_frames_count >= silence_limit:
+                    silence_duration = silence_frames_count * 32
+                    vad_mode = "Deep Silence Fast-Path" if silence_limit <= 10 else "Extended Thinking Pause"
+                    print(f"[ADAPTIVE VAD ({vad_mode})]: Speech ended cleanly (~{silence_duration}ms silence, voiced={total_voiced_frames*32}ms). Finishing recording ({len(audio_buffer)} bytes captured).")
+                    break
+        except asyncio.CancelledError:
+            print("[RECORDING TASK CANCELLED]")
+            return
+                
+        if is_listening:
+            is_listening = False
+            global is_processing_request
+            is_processing_request = True
+            
+            t_vad_break = time.time()
+            # Calculate physical speech cessation: wall-clock break time minus trailing silence frames (32ms per frame)
+            t_speech_end = t_vad_break - (silence_frames_count * 0.032)
+            
+            print(f"[MIC CLOSED]: Processing captured audio ({len(audio_buffer)} bytes, {total_voiced_frames * 32}ms voiced, trailing silence={silence_frames_count * 32}ms)...")
+            
+            if total_voiced_frames < 8 or len(audio_buffer) < 20000:
+                if active_followup_window.get("is_active"):
+                    print(f"[FOLLOW-UP SILENT CLOSURE]: No speech detected in follow-up window ({total_voiced_frames} voiced frames). Silently resetting to idle.")
+                    active_followup_window["is_active"] = False
+                    active_followup_window["consecutive_turns"] = 0
+                    active_followup_window["expecting_reply"] = False
+                    await broadcast("followup", {"active": False, "turn": 0})
+                    await broadcast("status", "Ready! Say 'Alexa' or click button below.")
+                    try:
+                        if is_connected():
+                            client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+                    except Exception:
+                        pass
+                    is_processing_request = False
+                    return
+
+                print(f"[VAD REJECT]: Audio too short / noise blip ({total_voiced_frames} voiced frames, {len(audio_buffer)} bytes). Returning to Idle.")
+                await broadcast("stt", "(Silence / No speech)")
+                if pending_priority_alerts:
+                    print("[VAD REJECT WITH PENDING ALERT]: Delivering pending timer alert now!")
+                    active_alerts = list(pending_priority_alerts)
+                    pending_priority_alerts.clear()
+                    alert_text = coalesce_priority_alerts(active_alerts, lang="en")
+                    chime = active_alerts[0].get("chime_pcm") or make_chime_pcm(duration=0.6)
+                    full_p = f"{alert_text} What can I do for you?"
+                    active_loop = loop if (loop is not None and loop.is_running()) else asyncio.get_running_loop()
+                    tts_p, _, _ = await active_loop.run_in_executor(None, run_tts, full_p)
+                    if tts_p:
+                        await stream_audio_to_esp32((chime or b'') + tts_p, full_p)
+                else:
+                    await broadcast("status", "Ready! Say 'Alexa' or click button below.")
+                try:
+                    if is_connected():
+                        client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+                except Exception:
+                    pass
+                is_processing_request = False
+                return
+
+            await broadcast("status", "Processing speech (Whisper STT)...")
+            
+            # Intentionally omitted VOICE_ASSISTANT_STT_VAD_END to keep ESP32 mic DMA actively capturing full-duplex for barge-in
+                
+            # 1. Run Whisper STT in background thread
+            cleaned_audio = await loop.run_in_executor(None, process_aec_and_noise_suppression, bytes(audio_buffer))
+            transcript, t_stt = await loop.run_in_executor(None, run_groq_whisper, cleaned_audio)
+            print(f"1. Whisper STT ({t_stt:.0f} ms): {transcript}")
+            await broadcast("stt", f"{transcript} ({t_stt:.0f} ms)")
+            
+            # Strip accidental leading wake words (e.g. "Alexa, what is...", "Hey Alexa tell me...")
+            # Works in both normal mode and zero-wake-word follow-up mode!
+            clean_transcript = re.sub(r'^(?:alexa|hey alexa|ओलेक्सा|अलेक्सा)[,\s!.]+', '', transcript, flags=re.IGNORECASE).strip()
+            if clean_transcript:
+                transcript = clean_transcript
+
+            # Filter out empty audio or Whisper hallucinations on silence / low noise
+            HALLUCINATIONS = [
+                "sous-titrage", "radio-canada", "thank you for watching", "thanks for watching",
+                "subtitles by", "amara.org", "transcription", "subscribe", "sous-titres", "titrage",
+                "झाल", "झाला", "झाले", "झालं", "झाली", "काय झालं", "हो"
+            ]
+            lower_t = transcript.lower().strip() if transcript else ""
+            clean_letters = re.sub(r'[\W\d_]', '', transcript or "").strip().lower()
+            is_only_wake_word = lower_t in ["alexa", "alexa.", "alexa!", "hey alexa", "alexa alexa"] or clean_letters in ["alexa", "heyalexa", "alexaalexa"]
+            is_noise = (
+                not transcript or 
+                len(lower_t) < 2 or 
+                len(clean_letters) < 2 or 
+                '\ufffd' in transcript or 
+                is_only_wake_word or
+                clean_letters in ["झाल", "झाला", "झाले", "झालं", "झाली", "हो"] or
+                any(h in lower_t for h in HALLUCINATIONS)
+            )
+            if is_noise:
+                if active_followup_window.get("is_active"):
+                    print(f"[FOLLOW-UP SILENT CLOSURE]: Whisper detected noise/silence ('{transcript}') in follow-up window. Silently resetting to idle.")
+                    active_followup_window["is_active"] = False
+                    active_followup_window["consecutive_turns"] = 0
+                    active_followup_window["expecting_reply"] = False
+                    await broadcast("followup", {"active": False, "turn": 0})
+                    await broadcast("status", "Ready! Say 'Alexa' or click button below.")
+                    try:
+                        if is_connected():
+                            client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+                    except Exception:
+                        pass
+                    is_processing_request = False
+                    return
+
+                print(f"[WHISPER FILTERED]: Ignored silence/hallucination/noise: '{transcript}'")
+                await broadcast("stt", "(Silence / No clear speech)")
+                try:
+                    if is_connected():
+                        client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+                except Exception:
+                    pass
+                await broadcast("status", "Ready! Say 'Alexa' or click button below.")
+                is_processing_request = False
+                return
+
+            # Dismissal Handling during Follow-Up Window
+            if active_followup_window.get("is_active") and is_followup_dismissal(transcript):
+                det_lang = detect_language(transcript, user_query=transcript)
+                close_replies = {
+                    "hi": "ठीक है, जब भी ज़रूरत हो आवाज़ दीजिएगा!",
+                    "mr": "ठीक आहे, काही लागलं तर नक्की सांगा!",
+                    "gu": "બરાબર છે, કાંઈ પણ જરૂર હોય તો જણાવજો!",
+                    "en": "Alright, let me know if you need anything else!"
+                }
+                close_text = close_replies.get(det_lang, close_replies["en"])
+                print(f"[FOLLOW-UP DISMISSED]: User said '{transcript}'. Speaking polite closing: '{close_text}'")
+
+                active_followup_window["is_active"] = False
+                active_followup_window["consecutive_turns"] = 0
+                active_followup_window["expecting_reply"] = False
+                global pending_followup_intent
+                pending_followup_intent = False
+
+                active_loop = loop if (loop is not None and loop.is_running()) else asyncio.get_running_loop()
+                close_pcm, _, v_lbl = await active_loop.run_in_executor(None, run_tts, close_text, transcript, "", det_lang)
+                if close_pcm:
+                    await stream_audio_to_esp32(close_pcm, close_text)
+                await broadcast("ai", close_text)
+                await broadcast("followup", {"active": False, "turn": 0})
+                await broadcast("status", "Ready! Say 'Alexa' or click button below.")
+                is_processing_request = False
+                return
+
+            # Direct Stop / Interruption Acknowledgement
+            STOP_WORDS = ["stop", "cancel", "shut up", "quiet", "silence", "bas", "ruk jao", "ruko", "chup", "shant", "band karo", "stop it", "stop that"]
+            clean_word = re.sub(r'[^\w\s]', '', lower_t).strip()
+            # Do NOT treat device operations (stopwatch, timer, alarm, music) as pure silencing interrupts!
+            is_device_command = any(w in clean_word for w in ["stopwatch", "timer", "alarm", "music", "गाने", "गाना", "टाइमर", "स्टॉपवॉच", "अलार्म"])
+            stop_phrases = [
+                "stop", "cancel", "shut up", "quiet", "silence", "bas", "ruk jao", "ruko", "chup", "shant", "band karo",
+                "stop it", "stop that", "alexa stop", "stop please", "please stop", "stop now", "stop talking", "just stop",
+                "chup ho jao", "chup raho", "band kar", "ruk", "rukiye"
+            ]
+            is_stop_command = not is_device_command and (
+                clean_word in stop_phrases or
+                any(clean_word.startswith(s + " ") for s in ["stop", "cancel", "shut up", "ruk jao", "chup", "band karo"]) or
+                any(clean_word.endswith(" " + s) for s in ["stop", "cancel", "shut up", "ruk jao", "chup", "band karo"])
+            )
+            if is_stop_command:
+                print(f"[IMMEDIATE STOP]: User commanded '{clean_word}'. Ending turn immediately.")
+                active_followup_window["is_active"] = False
+                active_followup_window["consecutive_turns"] = 0
+                active_followup_window["expecting_reply"] = False
+                pending_followup_intent = False
+                await broadcast("followup", {"active": False, "turn": 0})
+                await broadcast("ai", "Stopped.")
+                try:
+                    if is_connected():
+                        client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_STT_END, {"text": transcript})
+                        client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+                except Exception:
+                    pass
+                await broadcast("status", "Ready! Say 'Alexa' or click button below.")
+                is_processing_request = False
+                return
+
+            try:
+                if is_connected():
+                    client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_STT_END, {"text": transcript})
+                    client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START, None)
+                    client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END, None)
+            except Exception as e:
+                print(f"Error sending intent events: {e}")
+
+            # Check for mid-speech redirection / pivot ("don't tell this, tell this X", "ye mat batao, ye batao X")
+            pivoted_transcript = extract_pivot_query(transcript)
+            if pivoted_transcript != transcript:
+                print(f"\n>>> [MID-SPEECH PIVOT DETECTED]: Redirected from '{transcript}' -> '{pivoted_transcript}' <<<")
+                transcript = pivoted_transcript
+
+            # 2. Pipelined Sentence-Level Dialogue Synthesis & Gapless Streaming
+            raw_audio_captured = bytes(audio_buffer)
+            ambient_profile = calculate_ambient_noise_profile(raw_audio_captured)
+            cadence_info = analyze_speech_cadence(raw_audio_captured, transcript)
+            print(f"[ACOUSTIC RADAR]: {ambient_profile['dbfs']} dB ({ambient_profile['noise_category'].upper()}) -> Radar Gain: {ambient_profile['radar_gain']}x")
+            print(f"[SPEECH CADENCE]: {cadence_info['word_count']} words in {cadence_info['duration_sec']}s ({cadence_info['wpm']} WPM) -> Cadence: {cadence_info['state'].upper()} (TTS Speed: {cadence_info['tts_speed']})")
+
+            set_aura_led("thinking")
+            await broadcast("status", f"Thinking & Speaking (Radar: {ambient_profile['noise_category'].title()} | {cadence_info['state'].title()})...")
+            await broadcast("ambient", ambient_profile)
+            await broadcast("cadence", cadence_info)
+
+            audio_queue = asyncio.Queue()
+            global active_streamer_task, active_pipeline_task, playback_interrupt_event
+            playback_interrupt_event.clear()
+            active_streamer_task = asyncio.create_task(stream_audio_queue_to_esp32(audio_queue, label_text=transcript))
+            active_pipeline_task = asyncio.create_task(run_streaming_dialogue_pipeline(transcript, audio_queue, t_stt, ambient_profile=ambient_profile, cadence_info=cadence_info, t_speech_end=t_speech_end))
+            
+            try:
+                await asyncio.gather(active_streamer_task, active_pipeline_task)
+            except asyncio.CancelledError:
+                print("[PIPELINE CANCELLED DUE TO BARGE-IN INTERRUPTION]")
+            finally:
+                is_processing_request = False
+
+            # --- Follow-Up Dispatcher ---
+            if (pending_followup_intent and 
+                active_followup_window["consecutive_turns"] < active_followup_window["max_chain_depth"] and
+                not playback_interrupt_event.is_set() and
+                is_connected()):
+                
+                # 180ms acoustic silence gap: ensures ESP32 mic doesn't capture tail reverberation of speaker
+                await asyncio.sleep(0.180)
+                
+                active_followup_window["is_active"] = True
+                active_followup_window["consecutive_turns"] += 1
+                active_followup_window["expecting_reply"] = True
+                pending_followup_intent = False
+                
+                print(f"\n>>> [FOLLOW-UP ACTIVE LISTENING TRIGGERED]: Turn {active_followup_window['consecutive_turns']}/{active_followup_window['max_chain_depth']} - Mic opening without wake word! <<<")
+                await broadcast("status", f"Listening for your follow-up (Turn {active_followup_window['consecutive_turns']})...")
+                await broadcast("followup", {"active": True, "turn": active_followup_window["consecutive_turns"]})
+                await trigger_mic_start()
+            else:
+                active_followup_window["is_active"] = False
+                active_followup_window["consecutive_turns"] = 0
+                active_followup_window["expecting_reply"] = False
+                pending_followup_intent = False
+                await broadcast("followup", {"active": False, "turn": 0})
+            
+    global active_recording_task
+
+    recording_task = asyncio.create_task(stop_listening_and_process())
+
+    active_recording_task = recording_task
+    return 0
+
+
+async def handle_audio(data: bytes, pcm_type: bytes | None = None) -> None:
+    """Receives incoming microphone frames from ESP32 with DC offset correction and multi-frame adaptive VAD."""
+    global audio_buffer, is_listening, speech_confirmed, speech_frames_count, silence_frames_count
+    global ambient_noise_samples, ambient_noise_baseline, total_voiced_frames
+
+    if call_audio_bridge.is_active:
+        call_audio_bridge.feed_esp32_mic_audio(data)
+        process_in_call_mic_audio(data)
+        if not is_listening:
+            return
+
+    if not is_listening:
+        return
+        
+    audio_buffer.extend(data)
+    
+    try:
+        sample_count = len(data) // 2
+        if sample_count > 0:
+            samples = struct.unpack('<' + 'h' * sample_count, data)
+            mean_dc = sum(samples) // sample_count
+            # AC energy measurement
+            energy = sum(abs(s - mean_dc) for s in samples) // sample_count
+            
+            # Calibrate ambient noise baseline during initial ~300ms (first 10 frames)
+            if len(ambient_noise_samples) < 10:
+                ambient_noise_samples.append(energy)
+                ambient_noise_baseline = max(140, min(500, int(sum(ambient_noise_samples) / len(ambient_noise_samples))))
+            elif not speech_confirmed:
+                # Slowly adapt ambient baseline with exponential smoothing for stationary background noise (fan, AC)
+                ambient_noise_baseline = int(0.95 * ambient_noise_baseline + 0.05 * min(energy, 500))
+                
+            # Dynamic energy thresholds based on ambient room baseline (calibrated for soft trailing syllables)
+            speech_thresh = max(260, int(ambient_noise_baseline * 1.50 + 25))
+            silence_thresh = max(130, int(ambient_noise_baseline * 1.10 + 5))
+            
+            if energy >= speech_thresh:
+                total_voiced_frames += 1
+                if not speech_confirmed:
+                    speech_frames_count += 1
+                    # Require >= 2 consecutive frames (~64ms) to confirm genuine human speech
+                    if speech_frames_count >= 2:
+                        speech_confirmed = True
+                        silence_frames_count = 0
+                        print(f"[VAD SPEECH CONFIRMED]: Sustained human speech detected! (energy={energy}, baseline={ambient_noise_baseline})")
+                else:
+                    # Sustained speech continues, reset silence counter
+                    silence_frames_count = 0
+            elif not speech_confirmed:
+                # Isolated brief noise spike decays quickly
+                speech_frames_count = max(0, speech_frames_count - 1)
+            else:
+                # Speech was confirmed; user is currently in a pause or has stopped speaking
+                if energy < silence_thresh:
+                    silence_frames_count += 1
+                else:
+                    # Still above silence threshold (e.g. quiet continuation of vowel/consonant)
+                    silence_frames_count = 0
+    except Exception:
+        pass
+
+async def handle_stop(cancelled: bool) -> None:
+    """Triggered if ESP32 cancels pipeline."""
+    global is_listening, speech_confirmed, speech_frames_count, silence_frames_count, total_voiced_frames
+    global active_followup_window, pending_followup_intent, last_wake_start_time
+    
+    if call_audio_bridge.is_active:
+        print("[HANDLE_STOP]: Telephony call in progress. Re-opening continuous ESP32 mic streaming immediately.")
+        asyncio.create_task(trigger_mic_start())
+        return
+    set_aura_led("idle")
+
+    if time.time() - last_wake_start_time < 1.2:
+        print(f"[HANDLE_STOP]: Ignored transient stop signal from barge-in transition ({time.time() - last_wake_start_time:.2f}s ago). Keeping listener active.")
+        return
+
+    active_followup_window["is_active"] = False
+    active_followup_window["consecutive_turns"] = 0
+    active_followup_window["expecting_reply"] = False
+    pending_followup_intent = False
+    print("Voice Assistant stopped by ESP32")
+    is_listening = False
+    speech_confirmed = False
+    speech_frames_count = 0
+    silence_frames_count = 0
+    total_voiced_frames = 0
+    await broadcast("status", "Idle")
+    try:
+        if is_connected():
+            client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+    except Exception:
+        pass
+
+async def handle_announcement_finished(ann: VoiceAssistantAnnounceFinished) -> None:
+    try:
+        if is_connected():
+            client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+    except Exception:
+        pass
+
+# --- Reconnection Loop ---
+async def on_esp_disconnect(expected: bool):
+    """Callback triggered whenever ESP32 Native API connection drops."""
+    global client
+    print(f"\n[ESPHOME API]: Disconnected from ESP32 (expected={expected})")
+    await broadcast("status", "ESP32 disconnected. Reconnecting in background...")
+
+async def ensure_connected():
+    """Maintains active persistent connection to ESP32 Native API."""
+    global client, loop, button_key_cache, aura_led_key
+    if loop is None:
+        loop = asyncio.get_running_loop()
+        
+    if is_connected():
+        return True
+        
+    print(f"Connecting to ESP32 Native API at {HOST}:{PORT}...")
+    await broadcast("status", "Connecting to ESP32...")
+    
+    # Always cleanly tear down stale client before creating a fresh instance
+    if client is not None:
+        try:
+            await asyncio.wait_for(client.disconnect(), timeout=1.0)
+        except Exception:
+            pass
+        client = None
+
+    client = APIClient(HOST, PORT, PASSWORD)
+        
+    try:
+        await asyncio.wait_for(client.connect(on_stop=on_esp_disconnect, login=True), timeout=4.0)
+        print(f"Connected to ESP32 Native API at {HOST}!")
+        await broadcast("status", "Ready! Say 'Alexa' or click button below.")
+        
+        client.subscribe_voice_assistant(
+            handle_start=handle_start,
+            handle_audio=handle_audio,
+            handle_stop=handle_stop,
+            handle_announcement_finished=handle_announcement_finished
+        )
+        
+        # Reset ESP32 voice assistant state to IDLE so microWakeWord is guaranteed active
+        try:
+            client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+        except Exception:
+            pass
+            
+        try:
+            entities, _ = await asyncio.wait_for(client.list_entities_services(), timeout=3.0)
+            for entity in entities:
+                if hasattr(entity, 'name') and entity.name == "Force Start Mic":
+                    button_key_cache = entity.key
+                    print(f"Cached 'Force Start Mic' entity key: {button_key_cache}")
+                elif hasattr(entity, 'name') and entity.name == "Restart Wake Word":
+                    wake_word_button_key = entity.key
+                    print(f"Cached 'Restart Wake Word' entity key: {wake_word_button_key}")
+                elif hasattr(entity, 'name') and entity.name == "Aura LED":
