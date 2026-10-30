@@ -6998,3 +6998,503 @@ async def stream_audio_queue_to_esp32(audio_queue: asyncio.Queue, label_text: st
                     print("[STREAM INTERRUPTED]: Audio queue playback loop terminated mid-speech.")
                     break
                 pcm_bytes = await audio_queue.get()
+                if pcm_bytes is None or playback_interrupt_event.is_set():
+                    # Sentinel indicating all clauses in dialogue have been sent, or interrupted
+                    break
+                    
+                if not is_connected() or not pcm_bytes:
+                    continue
+                    
+                # Ensure 16-bit PCM word alignment
+                if len(pcm_bytes) % 2 != 0:
+                    pcm_bytes = pcm_bytes[:-1]
+                
+                # Gapless contiguous waveform chaining: stitch with unpadded leftover bytes from previous clause
+                data = leftover_pcm + pcm_bytes
+                leftover_pcm = b''
+                
+                total_bytes = len(data)
+                num_chunks = total_bytes // chunk_size
+                if num_chunks == 0:
+                    # Keep fractional chunk for the next clause instead of inserting zero padding mid-sentence!
+                    leftover_pcm = data
+                    continue
+                
+                usable_bytes = num_chunks * chunk_size
+                leftover_pcm = data[usable_bytes:]
+                data = data[:usable_bytes]
+                
+                now = time.monotonic()
+                if not first_event_sent:
+                    client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START, {"text": label_text})
+                    client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_TTS_STREAM_START, None)
+                    first_event_sent = True
+                    set_aura_led("speaking")
+                    stream_start = now
+                    total_chunks_sent = 0
+                    
+                    # Prime the ESP32 ring buffer with 3 chunks (~96ms, 3KB)
+                    prime_chunks = min(3, num_chunks)
+                    for k in range(prime_chunks):
+                        if not is_connected() or playback_interrupt_event.is_set():
+                            break
+                        start_idx = k * chunk_size
+                        chunk = data[start_idx:start_idx + chunk_size]
+                        client.send_voice_assistant_audio(chunk)
+                        record_speaker_audio_chunk(chunk)
+                        total_chunks_sent += 1
+                    offset = prime_chunks * chunk_size
+                else:
+                    # Clause Chaining: evaluate physical DAC hardware buffer status
+                    dac_audio_sec = total_chunks_sent * 0.032
+                    elapsed_sec = now - stream_start
+                    buffer_remaining_sec = dac_audio_sec - elapsed_sec
+                    
+                    if buffer_remaining_sec < 0.040:
+                        # Hardware buffer underrun/starvation occurred while waiting for cloud TTS.
+                        # Resynchronize clock to current real-time so we NEVER dump a 1ms catch-up firehose!
+                        stream_start = now - max(0.0, buffer_remaining_sec)
+                        total_chunks_sent = int(max(0.0, buffer_remaining_sec) / 0.032)
+                        
+                        # Re-prime the starved DAC with 2 chunks (~64ms)
+                        prime_chunks = min(2, num_chunks)
+                        for k in range(prime_chunks):
+                            if not is_connected() or playback_interrupt_event.is_set():
+                                break
+                            start_idx = k * chunk_size
+                            chunk = data[start_idx:start_idx + chunk_size]
+                            client.send_voice_assistant_audio(chunk)
+                            record_speaker_audio_chunk(chunk)
+                            total_chunks_sent += 1
+                        offset = prime_chunks * chunk_size
+                    else:
+                        # Continuous playback: ESP32 buffer is healthy, continue seamless pacing
+                        offset = 0
+                    
+                # Paced delivery of remaining chunks for this clause
+                for i in range(offset, usable_bytes, chunk_size):
+                    if playback_interrupt_event.is_set():
+                        print("[STREAM INTERRUPTED]: Chunk delivery aborted mid-clause.")
+                        break
+                    if not is_connected():
+                        print("ESP32 disconnected during audio queue stream")
+                        break
+                        
+                    chunk = data[i:i+chunk_size]
+                    dac_playback_time = total_chunks_sent * 0.032
+                    target_send_time = stream_start + dac_playback_time - lead_target_sec
+                    
+                    now = time.monotonic()
+                    if now < target_send_time:
+                        await asyncio.sleep(target_send_time - now)
+                    else:
+                        # Rate limiter guard: never send faster than 10ms (prevents ESP32 buffer overflow)
+                        await asyncio.sleep(0.010)
+                        
+                    if playback_interrupt_event.is_set():
+                        break
+                    client.send_voice_assistant_audio(chunk)
+                    record_speaker_audio_chunk(chunk)
+                    total_chunks_sent += 1
+            
+            # Flush final leftover bytes at end of speech
+            if leftover_pcm and not playback_interrupt_event.is_set() and is_connected():
+                final_chunk = leftover_pcm + (b'\x00' * (chunk_size - len(leftover_pcm)))
+                client.send_voice_assistant_audio(final_chunk)
+                record_speaker_audio_chunk(final_chunk)
+                total_chunks_sent += 1
+                leftover_pcm = b''
+                    
+            # 4. Wait for hardware DAC to physically finish acoustic playback of the full buffer into the room
+            if not playback_interrupt_event.is_set() and first_event_sent and total_chunks_sent > 0:
+                drain_target = stream_start + (total_chunks_sent * 0.032) + 0.350
+                remaining = max(0.400, drain_target - time.monotonic())
+                await asyncio.sleep(min(remaining, 1.5))
+                    
+            # 5. Clean end of pipeline AFTER speaker has physically finished audio playback (or on interrupt)
+            if is_connected():
+                if first_event_sent:
+                    try:
+                        client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_TTS_STREAM_END, None)
+                    except Exception:
+                        pass
+                try:
+                    client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+                except Exception:
+                    pass
+                if not playback_interrupt_event.is_set():
+                    if not call_audio_bridge.is_active:
+                        set_aura_led("idle")
+                    await broadcast("status", "Ready! Say 'Alexa' or click button below.")
+        except asyncio.CancelledError:
+            print("[AUDIO STREAM CANCELLED AT TASK LEVEL]")
+            if is_connected():
+                try:
+                    client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_TTS_STREAM_END, None)
+                    client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"Error streaming audio queue to ESP32: {e}")
+            try:
+                if is_connected():
+                    client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_TTS_STREAM_END, None)
+                    client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+            except Exception:
+                pass
+            await broadcast("status", "Ready! Say 'Alexa' or click button below.")
+        finally:
+            active_audio_queue = None
+
+async def stream_audio_to_esp32(pcm_audio: bytes, label_text: str):
+    """Backwards-compatible wrapper that feeds single PCM buffers through the queue streamer."""
+    if not pcm_audio:
+        return
+    global playback_interrupt_event
+    playback_interrupt_event.clear()  # Guarantee fresh playback for background alerts & notifications!
+    q = asyncio.Queue()
+    await q.put(pcm_audio)
+    await q.put(None)
+    await stream_audio_queue_to_esp32(q, label_text)
+
+# --- Streaming Dialogue Pipeline ---
+async def run_streaming_dialogue_pipeline(transcript: str, audio_queue: asyncio.Queue, t_stt: float, ambient_profile: dict | None = None, cadence_info: dict | None = None, t_speech_end: float | None = None):
+    """
+    Pipelined Sentence-Level Dialogue Synthesizer:
+    1. Streams natural clauses from Groq LLM.
+    2. Concurrently launches TTS synthesis for each clause as soon as its sentence boundary is detected.
+    3. Feeds raw audio PCM chunks into audio_queue the millisecond Clause 1 is ready,
+       achieving sub-second first-audio latency while remaining clauses synthesize in parallel.
+    """
+    t_start = time.time()
+    if t_speech_end is None:
+        t_speech_end = t_start - (t_stt / 1000.0)
+    speech_end_dt = datetime.datetime.fromtimestamp(t_speech_end)
+    speech_end_ts_str = speech_end_dt.strftime("%H:%M:%S.%f")[:-3]
+    first_audio_ts_str = "--:--:--.---"
+    v2v_latency_ms = 0
+
+    first_audio_logged = False
+    first_audio_ms = 0
+    all_clauses = []
+    definitive_lang = "en"
+    voice_used = "en-IN-NeerjaNeural"
+    total_audio_bytes = 0
+    
+    # --- Voice Selection ---
+    locked_turn_lang = None
+    locked_turn_voice = None
+    locked_turn_tier = None
+    
+    active_loop = loop if loop is not None else asyncio.get_running_loop()
+    clause_queue = asyncio.Queue()
+
+    # --- Audio Queue Delivery ---
+    global pending_priority_alerts
+    active_alerts = list(pending_priority_alerts)
+    pending_priority_alerts.clear()
+    
+    det_lang = detect_language(transcript, user_query=transcript)
+    if active_alerts:
+        q_lower = transcript.lower()
+        is_self_query = False
+        target_alert = None
+        for a in active_alerts:
+            t_name = a.get("name", "").lower()
+            if t_name and (t_name in q_lower or (t_name.replace(" timer", "") in q_lower and len(t_name.replace(" timer", "")) >= 3)):
+                is_self_query = True
+                target_alert = a
+                break
+        if not is_self_query and is_timer_query(transcript):
+            is_self_query = True
+            target_alert = active_alerts[0]
+            
+        if is_self_query:
+            t_name = target_alert.get("name", "timer")
+            if det_lang == "hi":
+                self_reply = f"श्रवण, आपका {t_name} का टाइमर अभी पूरा हुआ है! यह तैयार है।"
+            elif det_lang == "mr":
+                self_reply = f"श्रवण, तुमचा {t_name} चा टायमर आत्ताच पूर्ण झाला आहे! हे तयार आहे."
+            elif det_lang == "gu":
+                self_reply = f"શ્રવણ, તમારો {t_name} નો ટાઈમર હમણાં જ પૂર્ણ થયો છે! તે તૈયાર છે."
+            else:
+                self_reply = f"Shravan, your {t_name} timer just finished this very second! It is ready."
+                
+            chime = target_alert.get("chime_pcm") or make_chime_pcm(duration=0.6)
+            pcm, dt, v_label = await active_loop.run_in_executor(None, run_tts, self_reply, transcript, "", det_lang)
+            full_pcm = (chime or b'') + (pcm or b'')
+            if full_pcm:
+                await audio_queue.put(full_pcm)
+            await audio_queue.put(None)
+            
+            total_time = (time.time() - t_start) * 1000 + t_stt
+            await broadcast("ai", f"{self_reply} (First Audio: {total_time:.0f} ms | Total: {total_time:.0f} ms)")
+            return self_reply
+        else:
+            now_ts = time.time()
+            alert_age = now_ts - active_alerts[0].get("timestamp", now_ts)
+            if alert_age > 8:
+                sec_ago = int(alert_age)
+                if det_lang == "hi":
+                    alert_text = f"सूचना: आपका {active_alerts[0].get('name', 'टाइमर')} {sec_ago} सेकंड पहले पूरा हो चुका है।"
+                elif det_lang == "mr":
+                    alert_text = f"सूचना: तुमचा {active_alerts[0].get('name', 'टायमर')} {sec_ago} सेकंदांपूर्वी पूर्ण झाला आहे."
+                elif det_lang == "gu":
+                    alert_text = f"સૂચના: તમારો {active_alerts[0].get('name', 'ટાઈમર')} {sec_ago} સેકન્ડ પહેલા પૂર્ણ થઈ ગયો છે."
+                else:
+                    alert_text = f"Notice: Your {active_alerts[0].get('name', 'timer')} completed {sec_ago} seconds ago."
+            else:
+                alert_text = coalesce_priority_alerts(active_alerts, lang=det_lang)
+            bridge_text = get_bridge_phrase(det_lang)
+            combined_alert_clause = f"{alert_text}{bridge_text}"
+            chime = active_alerts[0].get("chime_pcm") or make_chime_pcm(duration=0.6)
+            
+            pcm_alert, dt_alert, v_label = await active_loop.run_in_executor(None, run_tts, combined_alert_clause, transcript, "", det_lang)
+            if pcm_alert:
+                alert_audio_bytes = (chime or b'') + pcm_alert
+                total_audio_bytes += len(alert_audio_bytes)
+                await audio_queue.put(alert_audio_bytes)
+                if not first_audio_logged:
+                    t_first_audio = time.time()
+                    first_audio_dt = datetime.datetime.fromtimestamp(t_first_audio)
+                    first_audio_ts_str = first_audio_dt.strftime("%H:%M:%S.%f")[:-3]
+                    v2v_latency_ms = max(0, (t_first_audio - t_speech_end) * 1000)
+                    first_audio_ms = v2v_latency_ms
+                    first_audio_logged = True
+                    print(f"\n================================================================================")
+                    print(f">>> [VOICE-TO-VOICE FIRST-WORD LATENCY (ALERT)]: {v2v_latency_ms:.0f} ms <<<")
+                    print(f"🎤 User Stopped Speaking:  {speech_end_ts_str}")
+                    print(f"🔊 Assistant First Word:   {first_audio_ts_str}")
+                    print(f"⚡ Turn-Taking Latency:    {v2v_latency_ms:.0f} ms (Alert + Bridge)")
+                    print(f"================================================================================\n")
+                all_clauses.append(combined_alert_clause)
+    
+    radar_gain = ambient_profile.get("radar_gain", 1.0) if ambient_profile else 1.0
+    tts_speed = cadence_info.get("tts_speed", 0.88) if cadence_info else 0.88
+    is_rushed = (cadence_info.get("state") == "rushed") if cadence_info else False
+
+    def clause_producer():
+        try:
+            for clause, lang, is_last, raw_rep in stream_groq_llm(transcript, cadence_info=cadence_info):
+                asyncio.run_coroutine_threadsafe(clause_queue.put((clause, lang, is_last, raw_rep)), active_loop).result()
+        finally:
+            asyncio.run_coroutine_threadsafe(clause_queue.put(None), active_loop).result()
+
+    producer_fut = active_loop.run_in_executor(None, clause_producer)
+
+    async def pipeline_worker():
+        nonlocal first_audio_logged, first_audio_ms, voice_used, total_audio_bytes, v2v_latency_ms, first_audio_ts_str
+        nonlocal locked_turn_lang, locked_turn_voice
+        
+        # Parallel pipelined TTS prefetching queue (ensures zero pauses between sentences in long dialogues)
+        tts_task_queue = asyncio.Queue()
+        
+        async def tts_prefetch_producer():
+            nonlocal locked_turn_lang, locked_turn_voice
+            while True:
+                item = await clause_queue.get()
+                if item is None:
+                    await tts_task_queue.put(None)
+                    break
+                clause, lang, is_last, raw_rep = item
+                
+                if locked_turn_lang is None:
+                    locked_turn_lang = lang or det_lang or "en"
+                    if locked_turn_lang == 'gu':
+                        locked_turn_voice = "gu-IN-DhwaniNeural"
+                    elif locked_turn_lang == 'mr':
+                        locked_turn_voice = "mr-IN-AarohiNeural"
+                    elif locked_turn_lang == 'hi':
+                        locked_turn_voice = "hi-IN-SwaraNeural"
+                    else:
+                        locked_turn_voice = "en-IN-NeerjaNeural"
+                    
+                    if tts_test_mode or not CARTESIA_KEYS or time.time() < cartesia_cooldown_until:
+                        locked_turn_tier = "edge"
+                    else:
+                        locked_turn_tier = "cartesia"
+                    print(f"[TURN VOICE LOCKED]: Locked voice persona to '{locked_turn_voice}' ({locked_turn_lang.upper()}) on Tier '{locked_turn_tier}' for all clauses.")
+                else:
+                    if tts_test_mode or not CARTESIA_KEYS or time.time() < cartesia_cooldown_until:
+                        locked_turn_tier = "edge"
+                    else:
+                        locked_turn_tier = "cartesia"
+
+                context = "normal"
+                if "[VOL: WHISPER]" in raw_rep or "[VOL: WHISPER]" in clause or any(w in transcript.lower() for w in ["whisper", "फुसफुस", "व्हिस्पर", "કાનમાં", "कान"]):
+                    context = "whisper"
+                elif "[VOL: CHEERFUL]" in raw_rep or "[VOL: CHEERFUL]" in clause or any(w in transcript.lower() for w in ["cheerful", "excited", "cheer", "screaming"]):
+                    context = "cheerful"
+
+                clean_clause = re.sub(r'\[VOL:\s*[A-Za-z0-9_-]+\]', '', clause, flags=re.IGNORECASE)
+                clean_clause = re.sub(r'\[[A-Za-z0-9_ -]+:[^\]]*\]', '', clean_clause)
+                clean_clause = re.sub(r'\[[^\]]*\]', '', clean_clause)
+                clean_clause = clean_clause.replace('|', '').replace('[', '').replace(']', '')
+                clean_clause = re.sub(r'[*_#`~]', '', clean_clause).strip()
+                if not clean_clause:
+                    continue
+                all_clauses.append(clean_clause)
+                
+                # Launch TTS immediately and concurrently in threadpool!
+                fut = active_loop.run_in_executor(None, run_tts, clean_clause, transcript, "", locked_turn_lang, context, radar_gain, tts_speed, locked_turn_voice, locked_turn_tier)
+                await tts_task_queue.put(fut)
+
+        prefetch_task = asyncio.create_task(tts_prefetch_producer())
+        
+        while True:
+            fut = await tts_task_queue.get()
+            if fut is None:
+                await audio_queue.put(None)
+                break
+            pcm, dt, v_label = await fut
+            voice_used = v_label
+            if not first_audio_logged and pcm:
+                t_first_audio = time.time()
+                first_audio_dt = datetime.datetime.fromtimestamp(t_first_audio)
+                first_audio_ts_str = first_audio_dt.strftime("%H:%M:%S.%f")[:-3]
+                v2v_latency_ms = max(0, (t_first_audio - t_speech_end) * 1000)
+                first_audio_ms = v2v_latency_ms
+                first_audio_logged = True
+                print(f"\n================================================================================")
+                print(f">>> [VOICE-TO-VOICE FIRST-WORD LATENCY]: {v2v_latency_ms:.0f} ms <<<")
+                print(f"🎤 User Stopped Speaking:  {speech_end_ts_str}")
+                print(f"🔊 Assistant First Word:   {first_audio_ts_str}")
+                print(f"⚡ Turn-Taking Latency:    {v2v_latency_ms:.0f} ms (STT: {t_stt:.0f}ms | Clause 1 TTS: {dt:.0f}ms | Voice: {v_label})")
+                print(f"================================================================================\n")
+            if pcm:
+                total_audio_bytes += len(pcm)
+                await audio_queue.put(pcm)
+                
+        await prefetch_task
+
+    await pipeline_worker()
+    await producer_fut
+    
+    full_reply = " ".join(all_clauses).strip()
+    global timer_preemption_active, pending_deferred_answer
+    if timer_preemption_active:
+        pending_deferred_answer = full_reply
+        print(f"[PIPELINE PREEMPTED]: Stored completed answer for deferred playback after alert: '{full_reply[:40]}...'")
+    total_time = (time.time() - t_start) * 1000 + t_stt
+    print(f"[PIPELINE FINISHED]: '{full_reply}' | STT: {t_stt:.0f}ms | First Audio: {first_audio_ms:.0f}ms | Total Wall Time: {total_time:.0f}ms\n")
+    
+    final_v2v = round(v2v_latency_ms) if v2v_latency_ms > 0 else (round(first_audio_ms) if first_audio_ms > 0 else round(t_stt + 350))
+    if first_audio_ts_str == "--:--:--.---":
+        first_audio_ts_str = datetime.datetime.fromtimestamp(t_speech_end + (final_v2v / 1000.0)).strftime("%H:%M:%S.%f")[:-3]
+
+    await broadcast("ai", f"{full_reply} (First Word: {final_v2v} ms | Total: {total_time:.0f} ms)")
+    await broadcast("metrics", {
+        "stt_ms": round(t_stt),
+        "llm_ms": round(max(0, first_audio_ms - t_stt - 300)),
+        "tts_ms": round(max(0, first_audio_ms - t_stt)),
+        "first_word_ms": final_v2v,
+        "speech_end_ts": speech_end_ts_str,
+        "first_audio_ts": first_audio_ts_str,
+        "voice": voice_used,
+        "total_ms": round(total_time)
+    })
+    return full_reply
+
+# --- Full Pipeline Processor ---
+def process_voice_pipeline(raw_pcm: bytes):
+    """Full synchronous execution: Groq Whisper -> Groq LLM -> Cartesia Sonic / MS Edge TTS."""
+    print(f"\n[PIPELINE START]: Captured {len(raw_pcm)} bytes of raw audio.")
+    
+    try:
+        with wave.open("debug.wav", "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            wf.writeframes(raw_pcm)
+    except Exception:
+        pass
+
+    # 1. Groq Whisper STT
+    asyncio.run_coroutine_threadsafe(broadcast("status", "1/3 Listening & Transcribing (Groq Whisper)..."), loop)
+    transcript, t_stt = run_groq_whisper(raw_pcm)
+    print(f"1. Whisper STT ({t_stt:.0f} ms): {transcript}")
+    asyncio.run_coroutine_threadsafe(broadcast("stt", f"{transcript} ({t_stt:.0f} ms)"), loop)
+    
+    HALLUCINATIONS = [
+        "sous-titrage", "radio-canada", "thank you for watching", "thanks for watching",
+        "subtitles by", "amara.org", "transcription", "subscribe", "sous-titres", "titrage"
+    ]
+    lower_t = transcript.lower().strip() if transcript else ""
+    if not transcript or len(lower_t) < 2 or any(h in lower_t for h in HALLUCINATIONS):
+        print(f"[WHISPER FILTERED]: Ignored silence/hallucination: '{transcript}'")
+        asyncio.run_coroutine_threadsafe(broadcast("stt", "(Silence / No clear speech)"), loop)
+        asyncio.run_coroutine_threadsafe(broadcast("status", "Ready! Say 'Alexa' or click button below."), loop)
+        return None, "", "(Silence)"
+        
+    # 2. Groq LLM
+    asyncio.run_coroutine_threadsafe(broadcast("status", "2/3 Thinking & Reasoning (Groq LLM)..."), loop)
+    detected_lang = detect_language(transcript, user_query=transcript)
+    try:
+        reply, definitive_lang, raw_reply, t_llm = run_groq_llm(transcript, detected_lang=detected_lang)
+    except Exception as e:
+        print(f"Error in run_groq_llm: {e}")
+        reply, definitive_lang, raw_reply, t_llm = "", detected_lang or "en", "", 100
+        
+    print(f"2. Groq LLM ({t_llm:.0f} ms): {reply}")
+    asyncio.run_coroutine_threadsafe(broadcast("ai", f"{reply} ({t_llm:.0f} ms)"), loop)
+    
+    # 3. Voice Synthesis
+    asyncio.run_coroutine_threadsafe(broadcast("status", "3/3 Synthesizing Voice..."), loop)
+    try:
+        tts_pcm, t_tts, voice_used = run_tts(reply, user_query=transcript, raw_reply=raw_reply, forced_lang=definitive_lang)
+    except Exception as e:
+        print(f"Error in run_tts: {e}")
+        tts_pcm, t_tts, voice_used = None, 0, "Error"
+    total_time = t_stt + t_llm + t_tts
+    print(f"3. Voice TTS [{voice_used}] ({t_tts:.0f} ms): Audio {len(tts_pcm) if tts_pcm else 0} bytes")
+    
+    asyncio.run_coroutine_threadsafe(broadcast("metrics", {
+        "stt_ms": round(t_stt),
+        "llm_ms": round(t_llm),
+        "tts_ms": round(t_tts),
+        "voice": voice_used,
+        "total_ms": round(total_time)
+    }), loop)
+    
+    return tts_pcm, reply, transcript
+
+last_wake_start_time = 0.0
+
+# --- ESPHome Event Handlers ---
+async def handle_start(conversation_id: str, flags: int, settings: VoiceAssistantAudioSettings, wake_word_phrase: str | None) -> int | None:
+    """Triggered automatically by ESP32 microWakeWord ('alexa') or Force Start button."""
+    global audio_buffer, is_listening, speech_confirmed, speech_frames_count, silence_frames_count
+    global ambient_noise_samples, ambient_noise_baseline, recording_task, total_voiced_frames
+    global active_streamer_task, active_pipeline_task, playback_interrupt_event, active_audio_queue
+    global last_wake_start_time
+    last_wake_start_time = time.time()
+    
+    global active_followup_window
+    if wake_word_phrase:
+        active_followup_window["consecutive_turns"] = 0
+        active_followup_window["is_active"] = False
+    
+    wake_label = wake_word_phrase if wake_word_phrase else ("Zero-Wake-Word Follow-Up" if active_followup_window.get("is_active") else "Voice Command")
+    print(f"\n>>> [WAKE WORD DETECTED]: {wake_label} <<<")
+    set_aura_led("listening")
+    
+    # 1. BARGE-IN / INTERRUPTION CHECK:
+    # If the speaker was actively playing audio or synthesizing speech, interrupt it immediately!
+    was_speaking = (active_streamer_task and not active_streamer_task.done()) or (active_pipeline_task and not active_pipeline_task.done())
+    if was_speaking:
+        print("\n>>> [BARGE-IN / INTERRUPTION]: Assistant was speaking! Instantly silencing speaker and purging queues. <<<")
+        playback_interrupt_event.set()
+        if active_audio_queue:
+            while not active_audio_queue.empty():
+                try:
+                    active_audio_queue.get_nowait()
+                except Exception:
+                    break
+        if active_streamer_task and not active_streamer_task.done():
+            active_streamer_task.cancel()
+        if active_pipeline_task and not active_pipeline_task.done():
+            active_pipeline_task.cancel()
+        # Immediately tell ESP32 to end audio playback stream and free DAC
+        # DO NOT send VOICE_ASSISTANT_RUN_END - that kills the newly started mic session!
+        try:
+            if is_connected():
