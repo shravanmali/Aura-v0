@@ -3798,3 +3798,803 @@ PALGHAR_HYPERLOCAL_DIRECTORY = {
         "name": "Hotel Sai Residency",
         "category_label": "Multi-Cuisine Family Dining & North Indian",
         "primary_keywords": ["sai residency", "hotel sai", "family restaurant", "family dining", "dinner", "lunch", "punjabi", "mughlai", "north indian", "chinese"],
+        "secondary_keywords": ["paneer butter masala", "butter chicken", "tandoori roti", "fried rice", "noodles", "manchurian"],
+        "details": (
+            "• **Hotel Sai Residency** (Palghar West)\n"
+            "  - Exact Location: Mahim Road, Palghar West (right next to user's neighborhood Vishnu Nagar).\n"
+            "  - Distance from User's Home: ~300 meters (just an easy 3-minute walk).\n"
+            "  - Top Specialties: Multi-cuisine dining, North Indian curries, Mughlai gravies, Chinese delicacies, Tandoori starters."
+        )
+    },
+    "pizza": {
+        "type": "food",
+        "name": "Domino's Pizza",
+        "category_label": "Pizza & Fast Food",
+        "primary_keywords": ["pizza", "domino", "dominos", "pizza hut", "पिज्जा", "પીઝા"],
+        "secondary_keywords": ["cheese burst", "garlic bread", "pasta", "burger", "burgers", "fast food"],
+        "details": (
+            "• **Domino's Pizza** (Palghar West)\n"
+            "  - Exact Location: Mahim Road / Station Road area, Palghar West.\n"
+            "  - Distance from Vishnu Nagar: ~1 km (about 3-4 minutes by auto).\n"
+            "  - Top Specialties: Farmhouse Pizza, Peppy Paneer, Garlic Breadsticks, Choco Lava Cake."
+        )
+    },
+    "south_indian": {
+        "type": "food",
+        "name": "Udupi Shri Krishna & Panchratna",
+        "category_label": "South Indian & Pure Veg Snacks",
+        "primary_keywords": ["dosa", "idli", "medu vada", "vada sambhar", "south indian", "udupi", "डोसा", "इडली", "ઢોસા"],
+        "secondary_keywords": ["uttapam", "filter coffee", "sambhar", "veg thali", "poha", "upma"],
+        "details": (
+            "• **Udupi Shri Krishna Restaurant** & **Panchratna Veg Restaurant** (Palghar West)\n"
+            "  - Exact Location: Station Road & Panch Batti, Palghar West.\n"
+            "  - Distance from Vishnu Nagar: ~850 meters to 1 km (about 3-4 minutes by auto).\n"
+            "  - Top Specialties: Crisp Masala Dosa, Mysore Masala Dosa, Steaming Idli Sambhar, Medu Vada, Filter Coffee."
+        )
+    },
+    "ice_cream": {
+        "type": "food",
+        "name": "Naturals Ice Cream & Amul Parlour",
+        "category_label": "Ice Cream & Shakes",
+        "primary_keywords": ["ice cream", "icecream", "naturals", "amul parlour", "kulfi", "आइसक्रीम", "આઈસ્ક્રીમ", "કુલ્ફી"],
+        "secondary_keywords": ["shake", "shakes", "sundae", "falooda", "cone", "scoop"],
+        "details": (
+            "• **Naturals Ice Cream** & **Amul Ice Cream Parlour** (Palghar West)\n"
+            "  - Exact Location: Mahim Road & Panch Batti, Palghar West.\n"
+            "  - Distance from Vishnu Nagar: ~800 meters (about 2-3 minutes by auto).\n"
+            "  - Top Specialties: Tender Coconut, Sitaphal (Custard Apple), Roasted Almond, Kulfi, Real Fruit Ice Creams."
+        )
+    },
+    "biryani": {
+        "type": "food",
+        "name": "Zaiqa Biryani House & Hotel Sai Residency",
+        "category_label": "Biryani & Kebabs",
+        "primary_keywords": ["biryani", "biryany", "biryani house", "kebabs", "kebab", "बिरयानी", "બિરયાની", "tikka"],
+        "secondary_keywords": ["dum biryani", "chicken biryani", "mutton biryani", "hyderabadi biryani"],
+        "details": (
+            "• **Zaiqa Biryani House** & **Hotel Sai Residency** (Palghar West)\n"
+            "  - Exact Location: Station Road & Mahim Road, Palghar West.\n"
+            "  - Distance from Vishnu Nagar: ~600 meters to 1 km.\n"
+            "  - Top Specialties: Authentic Hyderabadi Dum Biryani, Chicken Tikka Biryani, Seekh Kebabs."
+        )
+    },
+    "sweets_and_snacks": {
+        "type": "food",
+        "name": "Brijwasi Sweets & Jalaram Sweets",
+        "category_label": "Mithai, Sweets, Farsan & Chaat",
+        "primary_keywords": ["sweets", "sweet", "mithai", "farsan", "dhokla", "khaman", "samosa", "kachori", "मिठाई", "મીઠાઈ", "ફરસાણ", "chaat", "pani puri"],
+        "secondary_keywords": ["kaju katli", "gulab jamun", "rasgulla", "laddu", "ladoo", "jalebi"],
+        "details": (
+            "• **Brijwasi Sweets** & **Jalaram Sweets** (Palghar West)\n"
+            "  - Exact Location: Station Road & Mahim Road, Palghar West.\n"
+            "  - Distance from Vishnu Nagar: ~800 to 900 meters (~3 minutes by auto).\n"
+            "  - Top Specialties: Fresh Kaju Katli, Bengali Sweets, Gulab Jamun, Samosas, Kachoris, Khaman Dhokla, Gujarati Farsan."
+        )
+    },
+    "bakery_cakes": {
+        "type": "food",
+        "name": "Ribbons & Balloons and Monginis Cake Shop",
+        "category_label": "Bakery, Birthday Cakes & Pastries",
+        "primary_keywords": ["cake", "cakes", "bakery", "pastry", "pastries", "birthday cake", "केक", "બેકરી"],
+        "secondary_keywords": ["patties", "puffs", "truffle", "black forest", "brownie"],
+        "details": (
+            "• **Ribbons and Balloons** & **Monginis Cake Shop** (Palghar West)\n"
+            "  - Exact Location: Mahim Road & Station Road, Palghar West.\n"
+            "  - Distance from Vishnu Nagar: ~750 meters to 1 km.\n"
+            "  - Top Specialties: Chocolate Dutch Truffle Cake, Black Forest, fresh fruit pastries, cheese & chicken patties."
+        )
+    },
+    "chai_cafe": {
+        "type": "food",
+        "name": "Yewale Amruttulya & Chai Sutta Bar",
+        "category_label": "Tea, Chai & Cafe",
+        "primary_keywords": ["tea", "chai", "cafe", "coffee", "yewale", "amruttulya", "चाय", "ચા", "કૅફે"],
+        "secondary_keywords": ["bun maska", "kulhad chai", "cold coffee", "snack"],
+        "details": (
+            "• **Yewale Amruttulya** & **Chai Sutta Bar** (Palghar West)\n"
+            "  - Exact Location: Station Road & near Panch Batti, Palghar West.\n"
+            "  - Distance: ~800 meters.\n"
+            "  - Top Specialties: Authentic spiced cutting chai, Bun Maska, Kulhad coffee, evening snacks."
+        )
+    },
+
+    # --- COMMERCIAL UTILITIES & PHYSICAL PURCHASING (WHERE TO BUY) ---
+    "hardware": {
+        "type": "utility",
+        "name": "Hardware Centre (India) & National Hardware",
+        "category_label": "Hardware, Tools, Plumbing, Paints & Sanitary",
+        "primary_keywords": [
+            "hardware", "hardware shop", "hardware store", "tools", "tool shop",
+            "plumbing", "sanitary", "sanitaryware", "pipes", "pvc pipe",
+            "drill", "drills", "screws", "nuts and bolts", "hammer",
+            "paint", "paints", "asian paints", "हार्डवेयर", "हार्डवेयर की दुकान", "હાર્ડવેર", "ટૂલ્સ"
+        ],
+        "secondary_keywords": ["electrical fittings", "wires", "switches", "cement", "adhesives", "fevicol", "tap", "bathroom fittings"],
+        "details": (
+            "• **Hardware Centre (India)** & **National Hardware Stores** (Palghar West)\n"
+            "  - Exact Location: Opp. Panch Batti (Pachbatti Road) & Mahim Road, Palghar West.\n"
+            "  - Distance from Vishnu Nagar: ~700 to 800 meters (~2 minutes by auto or 8 minutes walk).\n"
+            "  - What you can buy: Power tools, hand tools, drills, screws, plumbing pipes & fittings, bathroom fixtures, Asian Paints, hardware accessories."
+        )
+    },
+    "stationery": {
+        "type": "utility",
+        "name": "Pruthvi Book Stores & Deepak Stationery Mart",
+        "category_label": "Stationery, Books, School & Office Supplies, Xerox",
+        "primary_keywords": [
+            "stationery", "stationary", "stationery shop", "stationery store",
+            "book store", "bookstore", "books shop", "notebooks", "notebook",
+            "pen", "pens", "school supplies", "office supplies", "xerox", "photocopy",
+            "printout", "printing", "स्टेशनरी", "किताबों की दुकान", "સ્ટેશનરી", "ચોપડા"
+        ],
+        "secondary_keywords": ["chart paper", "craft", "geometry box", "files", "folders", "stapler", "project paper", "textbooks"],
+        "details": (
+            "• **Pruthvi Book Stores & Stationery** & **Deepak Stationery Mart** (Palghar West)\n"
+            "  - Exact Location: \n"
+            "    1. Pruthvi Book Stores: Near ICICI Bank, Vishnu Nagar, Palghar West (only ~300 meters away, 3-minute walk right in user's neighborhood!).\n"
+            "    2. Deepak Stationery Mart: Panch Batti, Vishnu Nagar, Palghar West (~500 meters away).\n"
+            "    3. Mahalaxmi Stationery & Gift Shop: Mahim Road, Opp. Vijaya Bank (~700 meters away).\n"
+            "  - What you can buy: School/college notebooks, textbooks, pens, project charts, art & craft supplies, office files, printer paper, Xerox and printouts."
+        )
+    },
+    "medicines": {
+        "type": "utility",
+        "name": "Wellness Forever (24x7) & Noble Chemist",
+        "category_label": "Medicines, Pharmacy & Chemist",
+        "primary_keywords": [
+            "medicine", "medicines", "chemist", "pharmacy", "medical store", "medical shop",
+            "dawai", "dawakhana", "tablets", "first aid", "दवा", "दवाई", "मेडिकल", "દવા", "મેડિકલ"
+        ],
+        "secondary_keywords": ["bandages", "syrup", "prescription", "baby care", "emergency medicine", "dawa"],
+        "details": (
+            "• **Wellness Forever (24/7 Pharmacy)** & **Noble Chemist** (Palghar West)\n"
+            "  - Exact Location: Mahim Road (near user's area, open 24 hours) & Station Road, Palghar West.\n"
+            "  - Distance from Vishnu Nagar: ~750 meters (~2 minutes by auto).\n"
+            "  - What you can buy: All prescription medicines, OTC drugs, healthcare monitors, first-aid, baby care, emergency midnight medicines."
+        )
+    },
+    "groceries_supermarket": {
+        "type": "utility",
+        "name": "Reliance Smart Point & D-Mart Palghar",
+        "category_label": "Supermarkets, Groceries & Daily Needs",
+        "primary_keywords": [
+            "groceries", "grocery", "supermarket", "kirana", "ration", "reliance smart", "dmart", "d-mart",
+            "daily essentials", "किराना", "राशन", "ગ્રોસરી", "કરિયાણું"
+        ],
+        "secondary_keywords": ["atta", "dal", "oil", "rice", "spices", "cleaning supplies"],
+        "details": (
+            "• **Reliance Smart Point** & **D-Mart Palghar**\n"
+            "  - Exact Location: \n"
+            "    1. Reliance Smart Point: Mahim Road, Palghar West (~750 meters, 2 mins by auto).\n"
+            "    2. D-Mart: Manor-Palghar Road (~3.5 km, 10 mins by auto/car).\n"
+            "  - What you can buy: Complete groceries, packaged foods, daily essentials, grains, household cleaning items."
+        )
+    },
+    "electronics_mobile": {
+        "type": "utility",
+        "name": "Reliance Digital, Croma & Vijay Sales",
+        "category_label": "Electronics, Mobile Phones & Appliances",
+        "primary_keywords": [
+            "electronics", "electronic shop", "mobile shop", "mobile store", "phone shop", "croma",
+            "reliance digital", "vijay sales", "charger", "laptop shop", "इलेक्ट्रॉनिक्स", "મોબાઈલ"
+        ],
+        "secondary_keywords": ["tv", "refrigerator", "earphones", "powerbank", "cable", "repair"],
+        "details": (
+            "• **Reliance Digital / Croma** & **Vijay Sales** (Palghar West)\n"
+            "  - Exact Location: Mahim Road & Station Road / Panch Batti, Palghar West (~850 meters).\n"
+            "  - Distance: ~850 meters (~3 minutes by auto).\n"
+            "  - What you can buy: Smartphones, chargers, earphones, laptops, TVs, refrigerators, home appliances."
+        )
+    },
+    "clothing_fashion": {
+        "type": "utility",
+        "name": "Trends (Reliance Trends) & Zudio",
+        "category_label": "Clothing, Fashion & Readymade Garments",
+        "primary_keywords": ["clothes", "clothing", "fashion", "readymade", "garments", "trends", "zudio", "kapde", "कपड़े", "કપડાં"],
+        "secondary_keywords": ["jeans", "t-shirt", "shirt", "ethnic wear", "menswear", "ladies wear"],
+        "details": (
+            "• **Reliance Trends** & **Zudio** (Palghar West)\n"
+            "  - Exact Location: Mahim Road, Palghar West (~850 meters from Vishnu Nagar).\n"
+            "  - What you can buy: Men's, women's, and kids' casuals, formal wear, ethnic wear, jeans, shirts, jackets."
+        )
+    },
+    "footwear": {
+        "type": "utility",
+        "name": "Bata Store & Relaxo Footwear",
+        "category_label": "Footwear, Shoes & Slippers",
+        "primary_keywords": ["footwear", "shoes", "shoe shop", "chappal", "sandals", "slippers", "bata", "जूते", "ચંપલ"],
+        "secondary_keywords": ["sneakers", "formal shoes", "flip flops", "school shoes"],
+        "details": (
+            "• **Bata Store** & **Relaxo Footwear** (Palghar West)\n"
+            "  - Exact Location: Mahim Road / Station Road, Palghar West (~700 meters away).\n"
+            "  - What you can buy: Formal shoes, sports sneakers, school shoes, leather footwear, daily chappals and sandals."
+        )
+    },
+    "eyewear_optician": {
+        "type": "utility",
+        "name": "Lenskart.com Store",
+        "category_label": "Optician, Eyeglasses & Spectacles",
+        "primary_keywords": ["optician", "spectacles", "glasses", "chashma", "eyewear", "lenskart", "eye testing", "चश्मा", "ચશ્મા"],
+        "secondary_keywords": ["frames", "sunglasses", "contact lenses", "eye doctor"],
+        "details": (
+            "• **Lenskart.com Store** (Palghar West)\n"
+            "  - Exact Location: Mahim Road, Palghar West (~800 meters from Vishnu Nagar).\n"
+            "  - What you can buy: Prescription eyeglasses, frame trial, sunglasses, contact lenses, computerized eye testing."
+        )
+    },
+    "jewellery": {
+        "type": "utility",
+        "name": "Tanishq & PNG Jewellers",
+        "category_label": "Jewellery, Gold & Silver",
+        "primary_keywords": ["jewellery", "jeweler", "jewelry", "gold", "silver", "tanishq", "png jewellers", "sona", "chandi", "सोना", "चांदी", "જ્વેલરી"],
+        "secondary_keywords": ["ring", "necklace", "hallmark", "coins", "diamonds"],
+        "details": (
+            "• **Tanishq** & **P N Gadgil (PNG) Jewellers** (Palghar West)\n"
+            "  - Exact Location: Mahim Road & Station Road, Palghar West (~900 meters away).\n"
+            "  - What you can buy: Certified 22K/18K gold jewellery, diamond ornaments, silver coins, traditional Marathi ornaments."
+        )
+    }
+}
+
+# ARITHMETIC INTENT SCORING CONSTANTS
+FOOD_INTENT_TERMS = [
+    "eat", "eating", "food", "hungry", "craving", "cravings", "mood to", "moved to",
+    "taste", "restaurant", "restaurants", "hotel", "hotels", "snack", "snacks",
+    "breakfast", "lunch", "dinner", "dish", "places to eat", "famous place to eat",
+    "khana", "khane", "bhookh", "swad", "kahan khau", "zomato", "swiggy",
+    "रेस्टोरेंट", "खाना", "होटल", "भूख", "જમવું", "ખાવા", "રેસ્ટોરન્ટ"
+]
+
+UTILITY_BUY_INTENT_TERMS = [
+    "buy", "buying", "purchase", "purchasing", "shop", "shops", "store", "stores",
+    "get", "where can i get", "where to get", "where should i buy", "from where should i buy",
+    "kharidna", "kharid", "lena", "chahiye", "milega", "milta hai", "kahan milega",
+    "dokan", "dukaan", "doothe", "market", "bazaar", "दुकान", "खरीदना", "ખરીદવું"
+]
+
+LOCAL_GEO_INTENT_TERMS = [
+    "near me", "nearby", "close to me", "closest", "around me", "in palghar", "palghar west",
+    "palghar", "pachbatti", "panch batti", "vishnu nagar", "mahim road", "station road",
+    "pass me", "paas me", "नजदीक", "पास", "નજીક"
+]
+
+def resolve_palghar_hyperlocal_recommendations(user_query: str) -> str | None:
+    """
+    Sub-millisecond Arithmetic Scoring Engine for Local Palghar Cravings & Utility Shopping.
+    Evaluates:
+      Score(C) = sum(W_primary * I(w in Q)) + sum(W_secondary * I(w in Q)) + IntentBoost(C, Q)
+    Execution latency: < 0.1ms.
+    """
+    t0 = time.perf_counter()
+    q_low = user_query.lower()
+    
+    # 1. Detect Intent Weights
+    has_food_intent = any(term in q_low for term in FOOD_INTENT_TERMS)
+    has_buy_intent = any(term in q_low for term in UTILITY_BUY_INTENT_TERMS)
+    has_local_intent = any(term in q_low for term in LOCAL_GEO_INTENT_TERMS)
+    
+    # 2. Arithmetic Relevance Scoring across all categories
+    category_scores = {}
+    for cat_id, cat_data in PALGHAR_HYPERLOCAL_DIRECTORY.items():
+        score = 0.0
+        
+        # Primary keyword matches (Weight = 4.0 each)
+        for pk in cat_data["primary_keywords"]:
+            if pk in q_low:
+                score += 4.0
+                
+        # Secondary keyword matches (Weight = 2.0 each)
+        for sk in cat_data["secondary_keywords"]:
+            if sk in q_low:
+                score += 2.0
+                
+        # Intent Boosts
+        if score > 0:
+            if cat_data["type"] == "food" and has_food_intent:
+                score += 2.5
+            elif cat_data["type"] == "utility" and has_buy_intent:
+                score += 2.5
+            if has_local_intent:
+                score += 1.5
+                
+        category_scores[cat_id] = score
+        
+    matched = [(cat_id, score) for cat_id, score in category_scores.items() if score >= 3.5]
+    matched.sort(key=lambda x: x[1], reverse=True)
+    
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    
+    # CASE A: Exact Category Matches found
+    if matched:
+        top_matches = matched[:2]  # top 2 most relevant
+        sections = []
+        for cat_id, score in top_matches:
+            cat_info = PALGHAR_HYPERLOCAL_DIRECTORY[cat_id]
+            sections.append(f"[{cat_info['category_label'].upper()}]:\n{cat_info['details']}")
+            
+        result = (
+            f"[PALGHAR HYPER-LOCAL GROUND TRUTH (Matched in {elapsed_ms:.2f}ms)]:\n"
+            f"User Shravan lives in Vishnu Nagar, Palghar West (PIN 401404), near Hotel Sai Residency (on Mahim Road).\n"
+            + "\n\n".join(sections)
+            + "\n(State exact store name, street/landmark, distance in meters/km, and travel time directly. Never say you don't know)."
+        )
+        return result
+
+    # CASE B: General Food Query ("I want to eat something famous near me / what to eat")
+    if has_food_intent and (has_local_intent or "eat" in q_low or "restaurant" in q_low or "food" in q_low):
+        return (
+            f"[PALGHAR TOP DINING & FOOD INSTINCT DIRECTORY (Lookup {elapsed_ms:.2f}ms)]:\n"
+            "User lives in Vishnu Nagar, Palghar West near Mahim Road.\n"
+            "• **Waffles & Desserts**: The Belgian Waffle Co. at M V Super Market, Panch Batti (~900m / 3 mins auto).\n"
+            "• **Shawarma & Rolls**: Shawarma Nation near Panch Batti Road (~900m / 3 mins auto).\n"
+            "• **Family Dining (North Indian / Chinese / Mughlai)**: Hotel Sai Residency right on Mahim Road (~300m / 3 mins walk).\n"
+            "• **South Indian Dosa & Veg Snacks**: Udupi Shri Krishna & Panchratna on Station Road (~850m).\n"
+            "• **Pizza & Fast Food**: Domino's Pizza on Mahim Road (~1 km).\n"
+            "• **Ice Cream & Shakes**: Naturals Ice Cream on Mahim Road (~800m).\n"
+            "• **Sweets & Mithai**: Brijwasi Sweets on Station Road (~900m).\n"
+            "When answering, warmly suggest the top spot matching user's mood or give these top options with exact distances."
+        )
+
+    # CASE C: General Shopping Query ("I want to buy something, from where should I buy? e.g. hardware, stationery")
+    if has_buy_intent and (has_local_intent or "buy" in q_low or "shop" in q_low or "store" in q_low or "where" in q_low):
+        return (
+            f"[PALGHAR ESSENTIAL SHOPPING DIRECTORY (Lookup {elapsed_ms:.2f}ms)]:\n"
+            "User lives in Vishnu Nagar, Palghar West near Mahim Road.\n"
+            "• **Hardware, Tools & Plumbing**: Hardware Centre (India) & National Hardware Stores opposite Panch Batti / Mahim Road (~800m).\n"
+            "• **Stationery, Books & Printing**: Pruthvi Book Stores in Vishnu Nagar near ICICI Bank (~300m walk) or Deepak Stationery Mart at Panch Batti (~500m).\n"
+            "• **Medicines & Pharmacy**: Wellness Forever (24/7) on Mahim Road (~750m) or Noble Chemist on Station Road (~1 km).\n"
+            "• **Groceries & Supermarket**: Reliance Smart Point on Mahim Road (~750m) or D-Mart on Manor Road (~3.5 km).\n"
+            "• **Electronics & Gadgets**: Reliance Digital / Croma on Mahim Road (~850m).\n"
+            "• **Clothing & Fashion**: Reliance Trends & Zudio on Mahim Road (~850m).\n"
+            "Direct the user to the exact store based on what they want to purchase."
+        )
+
+    # CASE D: Uncategorized Hyper-Local Query with Local Geographic Intent (Dynamic Fallback Search)
+    is_local_commercial_inquiry = (
+        (has_local_intent or "palghar" in q_low or "near me" in q_low or "paas" in q_low) and
+        (has_food_intent or has_buy_intent or "where" in q_low or "shop" in q_low or "store" in q_low or "kahan" in q_low)
+    )
+    if is_local_commercial_inquiry:
+        search_res = search_web_live(f"{user_query} Palghar West", max_results=2)
+        if search_res:
+            return f"[LOCAL PALGHAR LIVE DIRECTORY SEARCH]:\nUser is inquiring about local options in Palghar West near Vishnu Nagar.\n{search_res}"
+
+    return None
+
+
+
+
+CALLING_CONTACTS_PATH = os.path.join(os.path.dirname(__file__), "calling_test", "contacts.json")
+
+def load_calling_contacts() -> dict:
+    if os.path.exists(CALLING_CONTACTS_PATH):
+        try:
+            with open(CALLING_CONTACTS_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def parse_call_intent(query: str) -> str | None:
+    if not query:
+        return None
+    # Strip trailing punctuation (. , ! ?) that Whisper adds
+    cleaned = re.sub(r'[^\w\s]', ' ', query).strip()
+    q = cleaned.lower()
+    
+    # Check direct phone number formats (e.g. "9356218285, call this number" or "call 9356218285")
+    m_num = re.search(r'(\d{10,12})\s+(?:call|dial|phone)', q)
+    if m_num:
+        return m_num.group(1)
+        
+    m_num2 = re.search(r'(?:call|dial|phone)\s+(?:this\s+number\s+)?(\d{10,12})', q)
+    if m_num2:
+        return m_num2.group(1)
+
+    patterns = [
+        r'^(?:alexa|pappu|please)?\s*(?:make\s+a\s+)?(?:phone\s+)?call\s+(?:to\s+)?([a-zA-Z0-9\u0900-\u097F\u0A80-\u0AFF\s]+)$',
+        r'^(?:alexa|pappu|please)?\s*dial\s+([a-zA-Z0-9\u0900-\u097F\u0A80-\u0AFF\s]+)$',
+        r'^(?:alexa|pappu|please)?\s*phone\s+([a-zA-Z0-9\u0900-\u097F\u0A80-\u0AFF\s]+)$',
+        r'([^\s]+)\s*(?:को|ला|ને)\s*(?:फोन|कॉल)\s*(?:करो|करा|लाव|કર|કરો)',
+    ]
+    for p in patterns:
+        m = re.search(p, q, re.IGNORECASE)
+        if m:
+            val = m.group(1).strip()
+            val = re.sub(r'\s+(?:please|now|fast|turant|lavkar|on\s+phone|this\s+number)$', '', val, flags=re.IGNORECASE)
+            return val
+    return None
+
+from esp32_call_bridge import bridge_instance as call_audio_bridge
+
+call_audio_packets_sent = 0
+
+def send_call_audio_to_esp32(pcm_chunk: bytes):
+    global client, loop, call_audio_packets_sent
+    if client and is_connected() and loop and not loop.is_closed():
+        try:
+            loop.call_soon_threadsafe(client.send_voice_assistant_audio, pcm_chunk)
+            call_audio_packets_sent += 1
+            if call_audio_packets_sent % 50 == 1:
+                print(f"[CALL AUDIO OUTBOUND]: Streaming caller voice to ESP32 speaker (packet #{call_audio_packets_sent}, size={len(pcm_chunk)}b)")
+        except Exception:
+            pass
+
+call_hangup_requested = False
+
+def monitor_active_call_session():
+    """Watches the call state and keeps the pure ESP32 hardware audio pipeline active."""
+    global client, loop, active_audio_queue, call_hangup_requested
+    call_hangup_requested = False
+    print("[CALL MONITOR] Telecom session monitor started.")
+    
+    # 1. Wait until any in-progress TTS announcement finishes completely to prevent audio collision/stutter!
+    while active_audio_queue is not None:
+        time.sleep(0.08)
+        
+    stream_opened = False
+    last_call_led_pattern = None
+    dial_start_ts = time.time()
+    try:
+        while not call_hangup_requested:
+            time.sleep(0.25)
+            if call_hangup_requested:
+                break
+            try:
+                import requests
+                r = requests.get("http://localhost:5050/api/status", timeout=1.5)
+                data = r.json()
+                state = data.get("state", "idle")
+                is_active = data.get("is_active", False)
+                # Call is only terminated if state has truly become 'ended' or reverted to 'idle' after initial dial grace period!
+                # As long as state is 'dialing', 'ringing', or 'connected', keep the pipeline active!
+                if (time.time() - dial_start_ts) > 6.0:
+                    if state == "ended" or (state == "idle" and not is_active):
+                        print(f"[CALL MONITOR] Call ended (state={state}, is_active={is_active}).")
+                        break
+
+                if state in ("dialing", "ringing") and not call_hangup_requested:
+                    if last_call_led_pattern != "ringing":
+                        set_aura_led("ringing")
+                        last_call_led_pattern = "ringing"
+                elif state == "connected" and not call_hangup_requested:
+                    cur_pattern = "muted" if call_audio_bridge.is_muted else "in_call"
+                    if last_call_led_pattern != cur_pattern:
+                        set_aura_led(cur_pattern)
+                        last_call_led_pattern = cur_pattern
+
+                if state in ("dialing", "ringing", "connected") and not call_hangup_requested:
+                    if not stream_opened and client and is_connected():
+                        def _arm():
+                            try:
+                                client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START, None)
+                                client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START, {"text": "Telecom Call"})
+                                client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_TTS_STREAM_START, None)
+                            except Exception as e:
+                                print(f"[CALL MONITOR ARM ERROR]: {e}")
+                        loop.call_soon_threadsafe(_arm)
+                        stream_opened = True
+                        print("[CALL MONITOR] ESP32 Speaker I2S pipeline armed and open!")
+                        try:
+                            asyncio.run_coroutine_threadsafe(trigger_mic_start(), loop)
+                        except Exception:
+                            pass
+                    if not call_audio_bridge.is_active and not call_hangup_requested:
+                        call_audio_bridge.start(send_call_audio_to_esp32)
+            except Exception:
+                pass
+    finally:
+        if call_audio_bridge.is_active:
+            call_audio_bridge.stop()
+        if stream_opened and client and is_connected():
+            def _disarm():
+                try:
+                    client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_TTS_STREAM_END, None)
+                    client.send_voice_assistant_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None)
+                except Exception:
+                    pass
+            loop.call_soon_threadsafe(_disarm)
+            stream_opened = False
+            print("[CALL MONITOR] ESP32 Speaker I2S pipeline closed cleanly.")
+        set_aura_led("hangup")
+        print("[CALL MONITOR] Telecom session finished.")
+def handle_call_intent(target: str, lang: str = "en") -> str:
+    contacts = load_calling_contacts()
+    clean_target = target.lower().strip()
+
+    def _norm(s: str) -> str:
+        return re.sub(r'[^a-zA-Z0-9\u0900-\u097F\u0A80-\u0AFF]', '', s.lower())
+
+    norm_target = _norm(clean_target)
+
+    SYNONYMS = {
+        "mom": ["mom", "mummy", "mother", "माँ", "मम्मी", "आई", "મમ્મી", "mummyji"],
+        "dad": ["dad", "papa", "father", "पापा", "बाबा", "પપ્પા", "pitaji"],
+        "myself": ["myself", "my self", "me", "shravan", "my phone", "self", "mera phone", "mujhe", "माझा फोन", "खुद को", "माझा नंबर", "mera number", "own phone"],
+        "emergency": ["emergency", "police", "ambulance", "112", "100", "help"]
+    }
+
+    resolved_number = None
+    resolved_name = target.title()
+
+    def _lookup(query_key: str):
+        nq = _norm(query_key)
+        if not nq:
+            return None, None
+        for k, data in contacts.items():
+            nk = _norm(k)
+            if nk == nq or nq in nk or nk in nq:
+                return data.get("number"), data.get("name", k.title())
+        return None, None
+
+    # 1. Check synonyms
+    for canon_key, syn_list in SYNONYMS.items():
+        norm_syns = [_norm(syn) for syn in syn_list]
+        if norm_target in norm_syns or any(ns in norm_target for ns in norm_syns):
+            resolved_number, resolved_name = _lookup(canon_key)
+            if not resolved_number and canon_key == "myself":
+                resolved_number, resolved_name = _lookup("my self")
+            if resolved_number:
+                break
+
+    # 2. Check exact or fuzzy contact keys in contacts.json
+    if not resolved_number:
+        resolved_number, resolved_name = _lookup(clean_target)
+
+    # 3. Check if target is directly a phone number
+    if not resolved_number:
+        digits = "".join(filter(str.isdigit, clean_target))
+        if len(digits) >= 10:
+            resolved_number = digits
+            resolved_name = digits
+
+    if not resolved_number:
+        msg_map = {
+            "hi": f"मुझे संपर्कों में '{target}' नहीं मिला। आप अपने डैशबोर्ड में नंबर जोड़ सकते हैं।",
+            "mr": f"मला संपर्कांमध्ये '{target}' सापडले नाही. तुम्ही डॅशबोर्डवर नंबर जोडू शकता.",
+            "gu": f"મને સંપર્કોમાં '{target}' મળ્યું નથી. તમે ડેશબોર્ડમાં નંબર ઉમેરી શકો છો.",
+            "en": f"I couldn't find {target} in your saved contacts. You can add them in your dashboard."
+        }
+        return msg_map.get(lang, msg_map["en"])
+
+    try:
+        def _delayed_dial():
+            # Wait until assistant finishes speaking the announcement cleanly through ESP32 speaker
+            global active_audio_queue, active_streamer_task
+            time.sleep(0.35)
+            while (active_audio_queue is not None) or (active_streamer_task is not None and not active_streamer_task.done()):
+                time.sleep(0.08)
+            time.sleep(0.30)
+            try:
+                import requests
+                r = requests.post("http://localhost:5050/api/dial", json={"phone_number": resolved_number, "video": False}, timeout=3.0)
+                if r.status_code == 200:
+                    threading.Thread(target=monitor_active_call_session, daemon=True).start()
+            except Exception as ex:
+                print(f"[DELAYED DIAL DISPATCH ERROR]: {ex}")
+
+        threading.Thread(target=_delayed_dial, daemon=True).start()
+
+        ack_map = {
+            "hi": f"{resolved_name} को जियो लैंडलाइन से कॉल लगा रहे हैं।",
+            "mr": f"{resolved_name} ला जिओ लँडलाईनवरून फोन लावत आहे.",
+            "gu": f"{resolved_name} ને જીઓ લેન્ડલાઈન પરથી કોલ લગાવી રહ્યા છીએ.",
+            "en": f"Calling {resolved_name} now on your Jio landline."
+        }
+        return ack_map.get(lang, ack_map["en"])
+    except Exception as e:
+        print(f"[CALL DISPATCH ERROR]: {e}")
+        
+    return f"Calling {resolved_name} now on your Jio landline."
+
+
+def is_hangup_command(query: str) -> bool:
+    if not query:
+        return False
+    q = query.lower().strip()
+    hangup_keywords = [
+        "hang up", "hangup", "hang the call", "cut the call", "cut call", "end call", "end the call",
+        "disconnect call", "disconnect", "stop call", "stop calling", "cancel call", "phone kato",
+        "call kato", "call cut", "call end", "call disconnect", "disconnect the call", "phone cut",
+        "call band", "band karo", "kato", "काटो", "काट", "कट करा", "कट कर", "કાપી નાખ", "बंद करो", "कॉल काटो", "फोन काटो"
+    ]
+    return any(w in q for w in hangup_keywords)
+
+def is_mute_command(query: str) -> bool:
+    if not query:
+        return False
+    q = query.lower().strip()
+    if is_unmute_command(q):
+        return False
+    mute_keywords = [
+        "mute", "mute mic", "mute the mic", "mute call", "mute the call", "chup ho jao", "म्यूट"
+    ]
+    return any(w in q for w in mute_keywords)
+
+def is_unmute_command(query: str) -> bool:
+    if not query:
+        return False
+    q = query.lower().strip()
+    unmute_keywords = [
+        "unmute", "un-mute", "unmute mic", "unmute the mic", "unmute call", "अनम्यूट"
+    ]
+    return any(w in q for w in unmute_keywords)
+
+def handle_mute_intent(lang: str = "en") -> str:
+    call_audio_bridge.set_mute(True)
+    set_aura_led("muted")
+    msg_map = {
+        "hi": "माइक्रोफ़ोन म्यूट कर दिया गया है।",
+        "mr": "मायक्रोफोन म्यूट केला आहे.",
+        "gu": "માઇક્રોફોન મ્યુટ કર્યો છે.",
+        "en": "Microphone is now muted."
+    }
+    return msg_map.get(lang, msg_map["en"])
+
+def handle_unmute_intent(lang: str = "en") -> str:
+    call_audio_bridge.set_mute(False)
+    set_aura_led("in_call")
+    msg_map = {
+        "hi": "माइक्रोफ़ोन अनम्यूट कर दिया गया है।",
+        "mr": "मायक्रोफोन अनम्यूट केला आहे.",
+        "gu": "માઇક્રોફોન અનમ્યુટ કર્યો છે.",
+        "en": "Microphone is now unmuted."
+    }
+    return msg_map.get(lang, msg_map["en"])
+
+
+# --- Call Voice Commands ---
+in_call_speech_buffer = bytearray()
+in_call_speech_frames = 0
+in_call_silence_frames = 0
+in_call_last_eval_time = 0.0
+
+def process_in_call_mic_audio(data: bytes):
+    """Monitors live mic stream during phone calls for verbal hangup or mute commands."""
+    global in_call_speech_buffer, in_call_speech_frames, in_call_silence_frames, in_call_last_eval_time
+    if not call_audio_bridge.is_active or len(data) < 32:
+        return
+    # If the speaker is actively playing caller audio into the room, ignore it to prevent false trigger
+    if hasattr(call_audio_bridge, 'is_speaker_active_in_room') and call_audio_bridge.is_speaker_active_in_room():
+        return
+        
+    try:
+        sample_count = len(data) // 2
+        samples = struct.unpack('<' + 'h' * sample_count, data)
+        mean_dc = sum(samples) // sample_count
+        energy = sum(abs(s - mean_dc) for s in samples) // sample_count
+        
+        # Energy threshold for speech (lowered to 180 for natural speaking volume)
+        if energy > 180:
+            in_call_speech_buffer.extend(data)
+            in_call_speech_frames += 1
+            in_call_silence_frames = 0
+        else:
+            if in_call_speech_frames > 0:
+                in_call_silence_frames += 1
+                in_call_speech_buffer.extend(data)
+                
+        # Trigger evaluation when user pauses (200ms silence = ~6 frames) or buffer reaches 1.8s
+        now = time.time()
+        if (in_call_speech_frames >= 6 and in_call_silence_frames >= 6 and (now - in_call_last_eval_time) > 1.0) or (len(in_call_speech_buffer) > 57600):
+            eval_pcm = bytes(in_call_speech_buffer)
+            in_call_speech_buffer.clear()
+            in_call_speech_frames = 0
+            in_call_silence_frames = 0
+            in_call_last_eval_time = now
+            threading.Thread(target=_evaluate_in_call_command, args=(eval_pcm,), daemon=True).start()
+    except Exception:
+        pass
+
+def _evaluate_in_call_command(pcm_data: bytes):
+    """Transcribes in-call user speech using native Groq Whisper STT to detect 'Alexa hang up', 'mute', 'unmute'."""
+    if len(pcm_data) < 8000:
+        return
+    try:
+        text, dt = run_groq_whisper(pcm_data)
+        if not text:
+            return
+        text = text.strip().lower()
+        if not text:
+            return
+            
+        print(f"[IN-CALL SPEECH MONITORED]: '{text}'")
+        
+        # 1. Check Hangup
+        if any(w in text for w in ["hang up", "hangup", "end call", "cut call", "cut the call", "disconnect", "call end", "stop call", "cancel", "kato", "phone kato", "काटो", "कट", "काट", "बंद"]):
+            print("[IN-CALL ACTION]: Hangup triggered via voice command!")
+            handle_hangup_intent("en")
+            return
+            
+        # 2. Check Unmute
+        if any(w in text for w in ["unmute", "un-mute", "अनम्यूट"]):
+            print("[IN-CALL ACTION]: Unmute triggered via voice command!")
+            call_audio_bridge.set_mute(False)
+            return
+            
+        # 3. Check Mute
+        if any(w in text for w in ["mute", "quiet", "म्यूट"]):
+            print("[IN-CALL ACTION]: Mute triggered via voice command!")
+            call_audio_bridge.set_mute(True)
+            return
+    except Exception as e:
+        print(f"[IN-CALL EVAL ERROR]: {e}")
+
+
+def handle_hangup_intent(lang: str = "en") -> str:
+    global call_hangup_requested
+    call_hangup_requested = True
+    set_aura_led("hangup")
+    call_audio_bridge.stop()
+    
+    # Signal MicroSIP to hang up cleanly so SIP BYE is transmitted over TLS to Jio
+    try:
+        import subprocess
+        microsip_exe = r"c:\Users\VICTUS\OneDrive\Desktop\Pappu Pelu\ESP 32\v0\calling_test\microsip\microsip.exe"
+        if os.path.exists(microsip_exe):
+            subprocess.run([microsip_exe, "/hangupall"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)
+    except Exception as e:
+        print(f"[MICROSIP HANGUP ERROR]: {e}")
+
+    try:
+        import requests
+        requests.post("http://localhost:5050/api/hangup", timeout=1.5)
+    except Exception as e:
+        print(f"[HANGUP ERROR]: {e}")
+
+    # Give MicroSIP 800ms to send SIP BYE to Jio Fiber network before cleaning up
+    time.sleep(0.8)
+    try:
+        import subprocess
+        subprocess.run(["taskkill", "/F", "/T", "/IM", "microsip.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.5)
+    except Exception:
+        pass
+        
+    msg_map = {
+        "hi": "कॉल समाप्त कर दिया गया है।",
+        "mr": "फोन कट केला आहे.",
+        "gu": "કોલ સમાપ્ત કરી દીધો છે.",
+        "en": "Call ended."
+    }
+    return msg_map.get(lang, msg_map["en"])
+
+def stream_groq_llm(user_query: str, detected_lang: str | None = None, cadence_info: dict | None = None):
+    """
+    Sentence-Level Streaming LLM Generator.
+    Yields (clause_text, definitive_lang, is_last, raw_accumulated) in real time
+    as natural sentence clauses are completed by Groq LLM.
+    """
+    global memory_data, conversation_history, groq_key_index, pending_followup_intent
+    t0 = time.time()
+    user_query = sanitize_mixed_indic_script(user_query)
+    lower_uq = user_query.lower().strip()
+    explicit_lang = extract_explicit_language_request(user_query)
+    det_lang = explicit_lang or detected_lang or detect_language(user_query, user_query=user_query)
+
+    def yield_fastpath_clauses(text: str, lang_code: str, is_followup: bool = False):
+        global pending_followup_intent
+        pending_followup_intent = is_followup
+        # Splits multi-sentence replies on .!?। so each clause can begin TTS immediately.
+        # Merge short initial sentences (< 5 words) with subsequent sentence so audio plays fluidly without pauses!
+        raw_sentences = [s.strip() for s in re.split(r'(?<=[.!?।])\s+', text) if s.strip()]
+        merged = []
+        for s in raw_sentences:
+            if not merged:
+                merged.append(s)
+            elif len(merged[-1].split()) < 6 or len(s.split()) < 4:
+                merged[-1] = merged[-1] + " " + s
+            else:
+                merged.append(s)
+        for i, s in enumerate(merged):
+            is_last = (i == len(merged) - 1)
+            yield (s, lang_code, is_last, f"[LANG: {lang_code.upper()}] {text}")
+    
+    # --- Multi-Command Handling ---
+    compound_reply, remaining_query = handle_compound_commands(user_query, det_lang or "en")
+    if compound_reply and not remaining_query:
+        # Case A: Only device commands executed (e.g. Volume 75% + Timer 10m)
+        print(f"[COMPOUND DEVICE COMMANDS EXECUTED]: '{compound_reply}'")
+        pending_followup_intent = False
+        yield (compound_reply, det_lang or "en", True, f"[LANG: {(det_lang or 'en').upper()}] {compound_reply}")
+        return
+    elif compound_reply and remaining_query:
