@@ -798,3 +798,703 @@ def get_alarms_data():
             "remaining_seconds": round(rem),
             "lang": a.get("lang", "en")
         })
+    result.sort(key=lambda x: x["target_ts"])
+    return result
+
+def format_duration_desc(seconds: int, lang: str = "en") -> str:
+    mins = seconds // 60
+    secs = seconds % 60
+    if mins > 0 and secs > 0:
+        if lang == "hi":
+            return f"{mins} मिनट {secs} सेकंड"
+        elif lang == "mr":
+            return f"{mins} मिनिटे {secs} सेकंद"
+        elif lang == "gu":
+            return f"{mins} મિનિટ {secs} સેકન્ડ"
+        else:
+            return f"{mins} minute and {secs} seconds"
+    elif mins > 0:
+        if lang == "hi":
+            return f"{mins} मिनट"
+        elif lang == "mr":
+            return f"{mins} मिनिटे"
+        elif lang == "gu":
+            return f"{mins} મિનિટ"
+        else:
+            return f"{mins} minute{'s' if mins > 1 else ''}"
+    else:
+        if lang == "hi":
+            return f"{secs} सेकंड"
+        elif lang == "mr":
+            return f"{secs} सेकंद"
+        elif lang == "gu":
+            return f"{secs} સેકન્ડ"
+        else:
+            return f"{secs} seconds"
+
+def format_stopwatch_clock(seconds: float) -> str:
+    total_ms = int(seconds * 100)
+    mins = (total_ms // 6000) % 60
+    secs = (total_ms // 100) % 60
+    hundredths = total_ms % 100
+    return f"{mins:02d}:{secs:02d}.{hundredths:02d}"
+
+def detect_proactive_cooking(query: str, lang: str = "en"):
+    q_lower = query.lower()
+    
+    # Rule 1: NEVER hijack educational, instructional, recipe, or question queries!
+    is_instructional = any(re.search(r'\b' + re.escape(w) + r'\b', q_lower) for w in [
+        "teach", "teach me", "how to", "recipe", "kaise", "batao", "bataiye", "sikhao", "sikha",
+        "ingredients", "process", "tips", "can you", "what is", "kya hai", "explain", "story",
+        "repeat", "tell me", "meaning", "define", "history"
+    ])
+    if is_instructional:
+        return None
+
+    # Rule 2: Never trigger if query is already about device clocks/timers explicitly
+    if any(w in q_lower for w in ["timer", "stopwatch", "alarm", "टाइमर", "अलार्म", "स्टॉपवॉच", "टायमर", "ટાઈમર"]):
+        return None
+
+    # Rule 3: Only trigger on explicit active present cooking statements (e.g. "I am making tea", "chai chadhayi hai")
+    ACTIVE_COOKING_PATTERNS = [
+        r'\b(?:i am|i\'m|we are|we\'re)\s+(?:making|boiling|cooking|heating|preparing)\b',
+        r'\b(?:maine|humne|me)\s+(?:chadhaya|chadhayi|rakha|rakhi)\s+hai\b',
+        r'\b(?:chadhai|chadhaya|ubal raha|ubal rahi|pak raha|pak rahi)\b',
+        r'\b(?:just put|putting on)\b'
+    ]
+    has_active_action = any(re.search(pat, q_lower) for pat in ACTIVE_COOKING_PATTERNS)
+    if not has_active_action:
+        return None
+
+    # Rule 4: Strict word-boundary matching (prevents "tea" matching inside "teach"!)
+    for dish_key, p in COOKING_PRESETS.items():
+        if any(re.search(r'\b' + re.escape(name) + r'\b', q_lower) for name in p["names"]):
+            phrase_data = p["phrases"].get(lang, p["phrases"]["en"])
+            return {
+                "dish_key": dish_key,
+                "dish_display": p["dish_display"],
+                "seconds": p["seconds"],
+                "prompt": phrase_data["prompt"],
+                "confirm": phrase_data["confirm"],
+                "complete": phrase_data["complete"],
+                "lang": lang
+            }
+    return None
+
+def parse_alarm_time(time_str: str) -> tuple[datetime.datetime, str] | None:
+    t_str = time_str.lower().strip()
+    is_pm = "pm" in t_str or "shaam" in t_str or "sham" in t_str or "raat" in t_str or "dopahar" in t_str or "दुपार" in t_str or "संध्याकाळ" in t_str or "રાત" in t_str or "સાંજ" in t_str
+    is_am = "am" in t_str or "subah" in t_str or "pratah" in t_str or "सकाळ" in t_str or "સવાર" in t_str
+    m = re.search(r'(\d{1,2}):(\d{2})', t_str)
+    if m:
+        h = int(m.group(1))
+        minute = int(m.group(2))
+    else:
+        m = re.search(r'(\d{1,2})\s*(?:baje|vagle|vagya|o\'clock|am|pm|बजे|वाजता|વાગ્યે|$)', t_str)
+        if m:
+            h = int(m.group(1))
+            minute = 0
+        else:
+            return None
+    if is_pm and h < 12:
+        h += 12
+    elif is_am and h == 12:
+        h = 0
+    if not (0 <= h <= 23 and 0 <= minute <= 59):
+        return None
+    now = datetime.datetime.now()
+    target = now.replace(hour=h, minute=minute, second=0, microsecond=0)
+    if target <= now:
+        target += datetime.timedelta(days=1)
+    fmt_str = target.strftime("%I:%M %p")
+    return target, fmt_str
+
+def parse_direct_timer(query: str):
+    q_lower = query.lower()
+    if not any(w in q_lower for w in ["timer", "टाइमर", "टायमर", "ટાઈમર"]):
+        return None
+    if any(w in q_lower for w in ["cancel", "stop", "band", "roko", "hatao", "रद्द", "बंद", "रोको", "રદ", "how much", "kitna", "remaining", "status", "bache", "baka"]):
+        return None
+    m_min = re.search(r'(\d+)\s*(?:minute|min|m|मिनट|મિનિટ)', q_lower)
+    m_sec = re.search(r'(\d+)\s*(?:second|sec|s|सेकंड|સેકન્ડ)', q_lower)
+    total_seconds = 0
+    if m_min:
+        total_seconds += int(m_min.group(1)) * 60
+    if m_sec:
+        total_seconds += int(m_sec.group(1))
+    if not m_min and not m_sec:
+        m_bare = re.search(r'(?:timer\s*(?:for|of)?|for)\s*(\d+)', q_lower)
+        if m_bare:
+            val = int(m_bare.group(1))
+            total_seconds = val * 60 if val <= 60 else val
+    if total_seconds <= 0:
+        return None
+        
+    dish_name = None
+    for k, p in COOKING_PRESETS.items():
+        if any(n in q_lower for n in p["names"]):
+            dish_name = p["dish_display"]
+            break
+            
+    INVALID_TIMER_NAMES = {
+        "me", "myself", "us", "him", "her", "it", "them", "now", "today", "tonight", "later",
+        "please", "a", "an", "the", "my", "our", "your", "this", "that", "something",
+        "timer", "alarm", "stopwatch", "time", "clock", "same", "another",
+        "second", "seconds", "sec", "secs", "minute", "minutes", "min", "mins", "hour", "hours",
+        "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"
+    }
+    
+    if not dish_name:
+        # Search all 'for <target>' occurrences (skipping 'for me', 'for 10 seconds', etc.)
+        for match in re.finditer(r'for\s+(?:my\s+|the\s+|a\s+|an\s+)?([a-zA-Z\u0900-\u0AFF]+)', q_lower):
+            cand = match.group(1).strip()
+            if cand.lower() not in INVALID_TIMER_NAMES and not cand.isdigit() and len(cand) >= 2:
+                dish_name = cand.title()
+                break
+                
+    if not dish_name:
+        for match in re.finditer(r'([a-zA-Z\u0900-\u0AFF]+)\s+ke\s+liye', q_lower):
+            cand = match.group(1).strip()
+            if cand.lower() not in INVALID_TIMER_NAMES and not cand.isdigit() and len(cand) >= 2:
+                dish_name = cand.title()
+                break
+                
+    if not dish_name:
+        mins = total_seconds // 60
+        secs = total_seconds % 60
+        if mins > 0 and secs == 0:
+            dish_name = f"{mins}-minute timer"
+        elif secs > 0 and mins == 0:
+            dish_name = f"{secs}-second timer"
+        else:
+            dish_name = f"{mins}m {secs}s timer"
+            
+    return total_seconds, dish_name
+
+def is_timer_query(query: str):
+    q_lower = query.lower()
+    has_timer_word = any(w in q_lower for w in ["timer", "टाइमर", "टायमर", "ટાઈમર"])
+    has_dish = any(any(n in q_lower for n in p["names"]) for p in COOKING_PRESETS.values())
+    has_query_cue = any(w in q_lower for w in [
+        "how much", "time left", "remaining", "status", "kitna", "kitne", "bache", "baka", "chal raha", "chal rahe",
+        "kitna time", "how long", "left on", "how many", "running", "active",
+        "कितना समय", "कितने", "बाकी", "शिल्लक", "કેટલા", "કેટલો સમય"
+    ])
+    if has_timer_word and has_query_cue:
+        return True
+    if has_dish and ("left" in q_lower or "remaining" in q_lower or "kitna" in q_lower or "bache" in q_lower or "time left" in q_lower):
+        return True
+    return False
+
+def is_timer_cancel(query: str):
+    q_lower = query.lower()
+    has_timer_word = any(w in q_lower for w in ["timer", "टाइमर", "टायमर", "ટાઈમર"])
+    has_dish = any(any(n in q_lower for n in p["names"]) for p in COOKING_PRESETS.values())
+    has_cancel_cue = any(w in q_lower for w in [
+        "cancel", "stop", "band", "roko", "hatao", "delete", "clear",
+        "रद्द", "बंद", "रोको", "हटाओ", "કાઢી", "રદ"
+    ])
+    return (has_timer_word or has_dish) and has_cancel_cue
+
+def parse_stopwatch_intent(query: str):
+    q_lower = query.lower()
+    is_sw = any(w in q_lower for w in ["stopwatch", "stop watch", "स्टॉपवॉच", "સ્ટોપવોચ", "the porch", "porch"])
+    is_lap = bool(re.search(r'\b(?:lap|लैप|लॅप|લેપ)\b', q_lower))
+    if not is_sw and not is_lap:
+        return None
+        
+    # 1. Lap check
+    if is_lap:
+        return "lap"
+        
+    # 2. Stop / Pause check (Prioritized so 'stop the stopwatch' stops it cleanly)
+    if re.search(r'\b(?:stop|pause|roko|band|halt|khatam|end)\b', q_lower) or any(w in q_lower for w in ["रोक", "बंद", "થોભાવો", "थांबवा"]):
+        return "stop"
+        
+    # 3. Resume check
+    if re.search(r'\b(?:resume|continue|chalu rakho|chalu karo)\b', q_lower) or any(w in q_lower for w in ["चालू रखो", "चालू ठेवा"]):
+        return "resume"
+
+    # 4. Start check
+    if re.search(r'\b(?:start|shuru|chalu|begin)\b', q_lower) or any(w in q_lower for w in ["शुरू", "चालू", "શરૂ"]):
+        return "start"
+        
+    # 5. Reset check
+    if re.search(r'\b(?:reset|zero|clear)\b', q_lower) or any(w in q_lower for w in ["रीसेट", "ઝીરો"]):
+        return "reset"
+        
+    # 6. Query check ('What is the time in the stopwatch', 'how much time done', etc.)
+    if re.search(r'\b(?:how much|status|time|kitna|kitne|chal raha|running|elapsed|batao|kya)\b', q_lower) or any(w in q_lower for w in ["कितना", "કેટલા", "काय", "वेळ"]):
+        return "query"
+        
+    return "query" if is_sw else None
+
+def parse_alarm_intent(query: str):
+    q_lower = query.lower()
+    if not any(w in q_lower for w in ["alarm", "अलार्म", "અલાર્મ"]):
+        return None
+    if any(w in q_lower for w in ["cancel", "stop", "band", "delete", "hatao", "रद्द", "बंद", "हटाओ"]):
+        return "cancel"
+    if any(w in q_lower for w in ["what", "list", "show", "status", "how many", "कितने", "કયા", "सांगा", "बताओ"]):
+        return "list"
+    if any(w in q_lower for w in ["set", "lagao", "karo", "लगाओ", "सेट", "કરો", "લગાવો"]) or any(char.isdigit() for char in q_lower):
+        return "set"
+    return "list"
+
+ws_clients = set()
+recording_task = None
+audio_buffer = bytearray()
+is_listening = False
+speech_confirmed = False
+speech_frames_count = 0
+silence_frames_count = 0
+total_voiced_frames = 0
+ambient_noise_samples = []
+ambient_noise_baseline = 450
+client = None
+loop = None
+button_key_cache = None
+wake_word_button_key = None
+aura_led_key = None
+
+# --- WS2812 LED Control ---
+def set_aura_led(mode: str):
+    """
+    Sets the 8-bit WS2812 RGB LED strip pattern based on voice assistant / telephony state.
+    Modes:
+      - 'listening': Electric Cyan (0.0, 0.8, 1.0)
+      - 'thinking': Thinking Wipe effect (Blue scanning)
+      - 'speaking': Speaking Pulse effect (Azure breathing pulse)
+      - 'ringing': Call Radar effect (Green radar sweep)
+      - 'in_call': Solid Emerald Green (0.0, 1.0, 0.2)
+      - 'muted': Solid Crimson Red (1.0, 0.0, 0.0)
+      - 'hangup': Solid Red brief pulse, then off
+      - 'idle' / 'off': Turns LED off
+    """
+    global client, loop, aura_led_key
+    if not client or not aura_led_key or not is_connected():
+        return
+
+    def _do():
+        try:
+            if not client or not aura_led_key:
+                return
+            if mode == "listening":
+                client.light_command(key=aura_led_key, state=True, brightness=0.7, rgb=(0.0, 0.8, 1.0), effect="None")
+            elif mode == "thinking":
+                client.light_command(key=aura_led_key, state=True, brightness=0.8, effect="Thinking Wipe")
+            elif mode == "speaking":
+                client.light_command(key=aura_led_key, state=True, brightness=0.7, effect="Speaking Pulse", rgb=(0.1, 0.6, 1.0))
+            elif mode == "ringing":
+                client.light_command(key=aura_led_key, state=True, brightness=0.85, effect="Call Radar")
+            elif mode == "in_call":
+                client.light_command(key=aura_led_key, state=True, brightness=0.7, rgb=(0.0, 1.0, 0.2), effect="None")
+            elif mode == "muted":
+                client.light_command(key=aura_led_key, state=True, brightness=0.85, rgb=(1.0, 0.0, 0.0), effect="None")
+            elif mode in ("idle", "off"):
+                client.light_command(key=aura_led_key, state=False)
+            elif mode == "hangup":
+                client.light_command(key=aura_led_key, state=True, brightness=0.5, rgb=(1.0, 0.1, 0.1), effect="None")
+                def _off():
+                    try:
+                        if client and aura_led_key and is_connected():
+                            client.light_command(key=aura_led_key, state=False)
+                    except Exception:
+                        pass
+                if loop and not loop.is_closed():
+                    loop.call_later(1.2, _off)
+        except Exception as e:
+            print(f"[AURA LED ERROR]: {e}")
+
+    if loop and not loop.is_closed():
+        loop.call_soon_threadsafe(_do)
+    else:
+        try:
+            _do()
+        except Exception:
+            pass
+audio_stream_lock = None
+playback_interrupt_event = asyncio.Event()
+active_streamer_task = None
+active_pipeline_task = None
+active_audio_queue = None
+AUDIO_CACHE = {}  # In-memory dictionary cache for sub-millisecond audio playback
+
+# --- Echo Reduction ---
+speaker_reference_ring = deque(maxlen=48000)  # Stores last 3 seconds of 16kHz 16-bit PCM sent to MAX98357A
+last_speaker_active_ts = 0.0
+
+def record_speaker_audio_chunk(pcm_chunk: bytes):
+    """Stores outgoing speaker audio in circular reference ring for echo subtraction."""
+    global last_speaker_active_ts
+    last_speaker_active_ts = time.time()
+    if pcm_chunk:
+        try:
+            samples = np.frombuffer(pcm_chunk, dtype=np.int16)
+            speaker_reference_ring.extend(samples)
+        except Exception:
+            pass
+
+def process_aec_and_noise_suppression(mic_bytes: bytes) -> bytes:
+    """
+    Google Meet style Acoustic Echo Cancellation (AEC) & Spectral Noise Subtraction:
+    1. If assistant was speaking, cross-correlate mic audio against speaker reference
+       to find acoustic room delay tau (typically 30-150ms) and subtract the scaled echo.
+    2. Performs adaptive spectral gating / noise suppression to eliminate fan, AC, and room reverberation.
+    """
+    if not mic_bytes or len(mic_bytes) < 320:
+        return mic_bytes
+
+    try:
+        t0 = time.perf_counter()
+        mic_samples = np.frombuffer(mic_bytes, dtype=np.int16).astype(np.float32)
+
+        # 1. Acoustic Echo Subtraction (if speaker was active within last 2.0s)
+        time_since_speech = time.time() - last_speaker_active_ts
+        if time_since_speech < 2.0 and len(speaker_reference_ring) >= 1600:
+            ref_samples = np.array(speaker_reference_ring, dtype=np.float32)
+            n_mic = len(mic_samples)
+            n_ref = len(ref_samples)
+            
+            search_len = min(n_mic, 8000)
+            if n_ref >= search_len:
+                ref_slice = ref_samples[-search_len:]
+                ref_power = np.mean(ref_slice ** 2) + 1e-6
+                mic_power = np.mean(mic_samples[:search_len] ** 2) + 1e-6
+                
+                if ref_power > 150.0:  # Speaker was physically active
+                    corr = np.correlate(mic_samples[:search_len], ref_slice, mode='full')
+                    delay = np.argmax(corr) - (search_len - 1)
+                    
+                    alpha = np.clip(np.sqrt(mic_power / ref_power) * 0.65, 0.0, 0.85)
+                    aligned_ref = np.zeros_like(mic_samples)
+                    full_ref_slice = ref_samples[-min(n_mic, n_ref):]
+                    aligned_ref[:len(full_ref_slice)] = full_ref_slice
+                    mic_samples = mic_samples - (alpha * aligned_ref)
+
+        # 2. Spectral Noise Gating (Google Meet Spectral Subtraction)
+        cleaned = nr.reduce_noise(
+            y=mic_samples,
+            sr=16000,
+            stationary=True,
+            prop_decrease=0.75,
+            n_fft=512,
+            win_length=400,
+            hop_length=160
+        )
+        
+        cleaned_int16 = np.clip(cleaned, -32768, 32767).astype(np.int16)
+        dt_ms = (time.perf_counter() - t0) * 1000
+        print(f"[AEC & NOISE SUPPRESSION]: Cleaned {len(mic_bytes)} bytes in {dt_ms:.1f}ms (Echo Subtracted + Background Damped)")
+        return cleaned_int16.tobytes()
+    except Exception as e:
+        print(f"[AEC WARNING - Fallback to raw audio]: {e}")
+        return mic_bytes
+
+
+def get_audio_stream_lock():
+    global audio_stream_lock
+    if audio_stream_lock is None:
+        audio_stream_lock = asyncio.Lock()
+    return audio_stream_lock
+
+# --- Microphone Interruption (Barge-In) ---
+active_recording_task = None
+timer_preemption_active = False
+pending_deferred_answer = None
+timer_preempted_user_query = None
+
+# Non-disruptive capture & sequential delivery queues
+pending_priority_alerts = []       # Thread-safe queue for alerts expiring while user is speaking
+pending_disconnected_alerts = []   # Buffer with 90s TTL if ESP32 Wi-Fi briefly drops
+
+# --- Follow-Up Listening ---
+active_followup_window = {
+    "is_active": False,
+    "consecutive_turns": 0,
+    "max_chain_depth": 3,
+    "expecting_reply": False,
+    "last_topic": ""
+}
+pending_followup_intent = False
+
+DISMISSAL_PHRASES = {
+    # English
+    "no", "no thanks", "no thank you", "nope", "nothing", "thats all", "that is all",
+    "thats it", "that is it", "im good", "i am good", "never mind", "nevermind", "all good",
+    "none", "not now", "no need", "nah", "stop", "cancel",
+    # Hindi / Hinglish
+    "नहीं", "ना", "बस", "कुछ नहीं", "रहने दो", "नहीं चाहिए", "nahi", "nahin", "kuch nahi",
+    "bas", "rehne do", "nahi chahiye", "kuchh nahi", "na",
+    # Marathi
+    "नाही", "नको", "काही नाही", "राहू दे", "नको काही", "nako", "kahi nahi", "rahu de",
+    # Gujarati
+    "ના", "નથી", "કાંઈ નહીં", "રહેવા દો", "નથી જોઈતું", "nathi", "kai nahi", "reva do"
+}
+
+def is_followup_dismissal(text: str) -> bool:
+    """Checks whether the user's speech in a follow-up window is a polite rejection/dismissal."""
+    if not text:
+        return False
+    clean = re.sub(r'[^\w\s\u0900-\u097F\u0A80-\u0AFF]', '', text.lower()).strip()
+    words = clean.split()
+    if clean in DISMISSAL_PHRASES:
+        return True
+    if len(words) <= 3 and any(w in DISMISSAL_PHRASES for w in [clean, *words]):
+        return True
+    return False
+
+def extract_pivot_query(text: str) -> str:
+    """
+    Extracts the redirected target query when a user interrupts with mid-speech redirection.
+    e.g. 'Alexa, don't tell this, tell this what is the capital of France' -> 'what is the capital of France'
+         'ye mat batao, ye batao Bharat ki rajdhani kya hai' -> 'Bharat ki rajdhani kya hai'
+    """
+    if not text:
+        return text
+    pivot_patterns = [
+        # English: "don't tell this/that, tell this/me X", "leave that, tell me X", "stop, tell me X"
+        r'^(?:(?:no|wait|hey|alexa)\s*[,;.-]?\s*)*(?:don[\'t]*\s+tell\s+(?:me\s+)?(?:this|that)|don[\'t]*\s+say\s+(?:this|that)|leave\s+(?:this|that)|stop\s+(?:it|that|this)?)\s*[,;.-]?\s*(?:instead\s+)?(?:tell\s+(?:me|this|that|us)\s+)?\s*(.+)',
+        # Hindi: "ये मत बताओ, ये बताओ X" or "छोड़ो, बताओ X"
+        r'^(?:अरे\s*)?(?:यह|ये)?\s*(?:मत\s+(?:बताओ|बोलो)|छोड़ो)\s*[,;.-]?\s*(?:मुझे\s+)?(?:यह|ये|अब)?\s*(?:बताओ|बोलो)?\s*(.+)',
+        # Marathi: "हे नको सांगू, हे सांग X" or "सोड, सांग X"
+        r'^(?:हे\s*)?(?:नको\s+सांगू|सोड)\s*[,;.-]?\s*(?:हे\s+सांग|सांगा|मला\s+सांग)?\s*(.+)',
+        # Gujarati: "આ ના કહે, આ બોલ X" or "છોડો, કહો X"
+        r'^(?:આ\s*)?(?:ના\s+કહે|ના\s+બોલ|છોડો)\s*[,;.-]?\s*(?:આ\s+કહો|આ\s+જણાવો|મને\s+કહો)?\s*(.+)',
+    ]
+    for pat in pivot_patterns:
+        m = re.match(pat, text, re.IGNORECASE)
+        if m and m.group(1).strip():
+            extracted = m.group(1).strip()
+            # If extracted starts with "tell this", "tell me", "this", "batao", strip that leading wrapper
+            extracted = re.sub(r'^(?:tell\s+(?:me|this|that|us)|batao|sang|kaho|this|that)[,\s!.]+', '', extracted, flags=re.IGNORECASE).strip()
+            if extracted:
+                return extracted
+    return text
+
+def is_query_strictly_single_turn(user_query: str) -> bool:
+    """Priority-Gated Rule: Strictly forbids follow-up probes on utility, device, or simple factual tasks."""
+    q_low = user_query.lower()
+    # 1. Device controls & System actions (Timers, Alarms, Volume, Stopwatch)
+    if any(k in q_low for k in ['timer', 'alarm', 'stopwatch', 'volume', 'loud', 'quiet', 'mute', 'cancel', 'stop', 'pause', 'reset', 'clear', 'wipe', 'remember', 'forget', 'memory']):
+        return True
+    # 2. Daily Utility / Closed factual answers
+    if any(k in q_low for k in ['time', 'date', 'day', 'today', 'weather', 'temperature', 'rain', 'forecast', 'petrol', 'diesel', 'cng', 'fuel', 'gold rate', 'silver rate']):
+        return True
+    # 3. Simple math, conversions, calculations
+    if any(k in q_low for k in ['calculate', 'how much is', 'how many', 'convert', 'percent', '%', 'plus', 'minus', 'multiply', 'divide', 'saved', 'growth', 'compound']):
+        return True
+    # 4. Direct identity / Definition / Closed lookups
+    if any(k in q_low for k in ['who is', 'capital of', 'meaning of', 'define ', 'difference between']):
+        return True
+    return False
+
+def extract_followup_decision(full_raw: str, full_clean: str, user_query: str = "") -> bool:
+    """
+    Priority-Gated Follow-Up Matrix:
+    Strictly forbids follow-up prompts on P0 single-turn tasks (device controls, time, weather, math, definitions).
+    Only allows follow-up on genuine exploratory queries where continuation is necessary.
+    """
+    if user_query and is_query_strictly_single_turn(user_query):
+        return False
+    if "[FOLLOWUP: NO]" in full_raw:
+        return False
+    if "[FOLLOWUP: YES]" in full_raw:
+        return True
+    clean_text = re.sub(r'\[[^\]]*\]', '', full_clean).strip()
+    if not clean_text:
+        return False
+    if re.search(r'[?؟]\s*$', clean_text):
+        return True
+    return False
+    if "[FOLLOWUP: YES]" in full_raw:
+        return True
+    clean_text = re.sub(r'\[[^\]]*\]', '', full_clean).strip()
+    if not clean_text:
+        return False
+    if re.search(r'[?؟]\s*$', clean_text):
+        return True
+    return False
+
+def get_bridge_phrase(lang: str) -> str:
+    """Localized bridge connecting the timer alert to the user's query answer."""
+    bridges = {
+        "hi": " और आपके सवाल का जवाब: ",
+        "mr": " आणि तुमच्या प्रश्नाचे उत्तर: ",
+        "gu": " અને તમારા પ્રશ્નનો જવાબ: ",
+        "en": " And regarding your question: "
+    }
+    return bridges.get(lang, bridges["en"])
+
+def coalesce_priority_alerts(alerts: list, lang: str = "en") -> str:
+    """Coalesces multiple expiring alerts into a single cohesive, natural sentence."""
+    if not alerts:
+        return ""
+    if len(alerts) == 1:
+        return alerts[0]["completion_phrase"]
+        
+    names = [a.get("name", "Timer") for a in alerts]
+    if len(names) == 2:
+        joined = f"{names[0]} and {names[1]}" if lang == "en" else f"{names[0]} और {names[1]}"
+    else:
+        joined = ", ".join(names[:-1]) + (f", and {names[-1]}" if lang == "en" else f", और {names[-1]}")
+        
+    if lang == "hi":
+        return f"आपके {joined} टाइमर पूरे हो चुके हैं!"
+    elif lang == "mr":
+        return f"तुमचे {joined} टायमर पूर्ण झाले आहेत!"
+    elif lang == "gu":
+        return f"તમારા {joined} ટાઈમર પૂર્ણ થઈ ગયા છે!"
+    else:
+        return f"Your {joined} timers are both complete!"
+
+async def trigger_mic_start():
+    """Triggers ESP32 microphone to start listening immediately without requiring wake word."""
+    global button_key_cache
+    if not is_connected():
+        return False
+    try:
+        if button_key_cache is None:
+            entities, _ = await asyncio.wait_for(client.list_entities_services(), timeout=3.0)
+            for entity in entities:
+                if hasattr(entity, 'name') and entity.name == "Force Start Mic":
+                    button_key_cache = entity.key
+                    break
+        if button_key_cache:
+            client.button_command(button_key_cache)
+            print("[MIC AUTO-REOPENED]: Listening for follow-up speech directly!")
+            return True
+    except Exception as e:
+        print(f"Error reopening mic: {e}")
+    return False
+
+async def execute_priority_alert(chime_pcm: bytes, completion_phrase: str, lang: str = "en", alert_type: str = "timer", name: str = "Timer"):
+    """
+    NON-DISRUPTIVE SEAMLESS CAPTURE & SEQUENTIAL DELIVERY DISPATCHER:
+    1. If user is speaking / mic active (Stage 1 & 2):
+       NEVER cut off mic! Buffers alert into pending_priority_alerts.
+       When user finishes speaking, alert plays FIRST, directly followed by their answer without gaps or clashing.
+    2. If Alexa is computing or streaming (Stage 3 & 4):
+       Injects alert into the active audio queue so it plays in the same continuous stream.
+    3. If device is IDLE (Stage 0):
+       Wakes ESP32 DAC amp, plays chime + alert phrase, drains buffer cleanly to Idle.
+    4. If ESP32 is temporarily disconnected:
+       Keeps alert in pending_disconnected_alerts (TTL 90s) and flushes upon reconnection.
+    """
+    global is_listening, audio_buffer, active_recording_task, playback_interrupt_event
+    global active_streamer_task, active_pipeline_task, active_audio_queue
+    global pending_priority_alerts, pending_disconnected_alerts
+
+    print(f"\n[PRIORITY ALERT TRIGGERED]: Type={alert_type} | Name='{name}' | Phrase='{completion_phrase[:40]}...'")
+    
+    global is_processing_request
+    # 1. State 1 & 2: User is currently speaking OR server is processing Whisper STT / Groq LLM
+    if is_listening or is_processing_request:
+        print(f"[PREEMPTION - BUSY]: Assistant is listening or processing. Buffering alert for '{name}' into pending_priority_alerts!")
+        pending_priority_alerts.append({
+            "type": alert_type,
+            "name": name,
+            "completion_phrase": completion_phrase,
+            "chime_pcm": chime_pcm,
+            "lang": lang,
+            "timestamp": time.time()
+        })
+        return
+
+    # 2. State 3 & 4: Pipeline is actively running and streaming
+    if (active_pipeline_task and not active_pipeline_task.done()) and active_audio_queue is not None:
+        print(f"[PREEMPTION - STAGE 3]: Groq pipeline is active. Injecting alert directly into active_audio_queue for seamless continuous playback!")
+        active_loop = loop if (loop is not None and loop.is_running()) else asyncio.get_running_loop()
+        try:
+            tts_pcm, _, _ = await active_loop.run_in_executor(None, run_tts, completion_phrase, "", "", lang)
+            full_audio = (chime_pcm or b'') + (tts_pcm or b'')
+            if full_audio:
+                await active_audio_queue.put(full_audio)
+                return
+        except Exception as ex:
+            print(f"[PIPELINE INJECTION ERROR]: {ex}")
+
+    # 3. State 0: Device is IDLE
+    print(f"[PRIORITY ALERT - IDLE]: Delivering alert immediately over ESP32 speaker.")
+    active_loop = loop if (loop is not None and loop.is_running()) else asyncio.get_running_loop()
+    tts_pcm = None
+    try:
+        tts_pcm, _, _ = await active_loop.run_in_executor(None, run_tts, completion_phrase, "", "", lang)
+    except Exception as ex:
+        print(f"[PREEMPTION TTS ERROR]: {ex}")
+
+    full_audio = (chime_pcm or b'') + (tts_pcm if tts_pcm else b'')
+    playback_interrupt_event.clear()
+    if full_audio:
+        if is_connected():
+            await stream_audio_to_esp32(full_audio, completion_phrase)
+        else:
+            print(f"[DISCONNECTED BUFFER]: ESP32 offline. Storing alert '{completion_phrase}' in retry buffer.")
+            pending_disconnected_alerts.append({
+                "audio": full_audio,
+                "phrase": completion_phrase,
+                "timestamp": time.time()
+            })
+
+# Load or initialize persistent responsive zero-base memory
+def load_memory():
+    if os.path.exists(MEMORY_FILE):
+        try:
+            with open(MEMORY_FILE, 'r', encoding='utf-8') as f:
+                d = json.load(f)
+                if "memories" not in d:
+                    d["memories"] = []
+                return d
+        except Exception as e:
+            print(f"Error loading memory.json: {e}")
+    initial = {
+        "user_name": None,
+        "memories": []
+    }
+    save_memory(initial)
+    return initial
+
+# --- User Fact Storage ---
+
+PRONOUN_MAP_EN = [
+    (r"\bi am\b", "you are"),
+    (r"\bi'm\b", "you're"),
+    (r"\bi have\b", "you have"),
+    (r"\bi've\b", "you've"),
+    (r"\bi like\b", "you like"),
+    (r"\bi love\b", "you love"),
+    (r"\bmy\b", "your"),
+    (r"\bmine\b", "yours"),
+    (r"\bme\b", "you"),
+    (r"\bi\b", "you"),
+]
+
+PRONOUN_MAP_HI = [
+    (r"\bमेरा\b", "आपका"),
+    (r"\bमेरी\b", "आपकी"),
+    (r"\bमेरे\b", "आपके"),
+    (r"\bमुझे\b", "आपको"),
+    (r"\bमुझसे\b", "आपसे"),
+    (r"\bमैं\b", "आप"),
+]
+
+PRONOUN_MAP_MR = [
+    (r"\bमाझा\b", "तुमचा"),
+    (r"\bमाझी\b", "तुमची"),
+    (r"\bमाझे\b", "तुमचे"),
+    (r"\bमला\b", "तुम्हाला"),
+    (r"\bमी\b", "तुम्ही"),
+]
+
+PRONOUN_MAP_GU = [
+    (r"\bમારું\b", "તમારું"),
+    (r"\bમારી\b", "તમારી"),
+    (r"\bમારો\b", "તમારો"),
+    (r"\bમને\b", "તમને"),
+    (r"\bહું\b", "તમે"),
+]
+
+def invert_pronouns_for_storage(text: str, lang: str = "en") -> str:
+    """Converts 1st-person user speech ('my favorite color is red') to 2nd-person assistant memory ('your favorite color is red')."""
+    t = text.strip()
+    if lang == "en":
