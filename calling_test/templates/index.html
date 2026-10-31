@@ -398,3 +398,153 @@
       font-weight: bold;
     }
 
+    /* Contacts Section */
+    .contacts-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 20px 24px;
+      backdrop-filter: blur(12px);
+    }
+    .contacts-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .contacts-title {
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+    }
+    .contact-form {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .contact-input {
+      flex: 1;
+      min-width: 140px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+    }
+    .contact-input:focus {
+      border-color: var(--accent);
+    }
+    .contacts-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .contact-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.15s ease;
+    }
+    .contact-item:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+    .contact-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .contact-name {
+      font-weight: 600;
+      font-size: 14px;
+      color: #fff;
+    }
+    .contact-number {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: monospace;
+    }
+    .contact-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-call-mini {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34d399;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+    .btn-call-mini:hover {
+      background: #10b981;
+      color: #fff;
+    }
+    .btn-del-mini {
+      background: transparent;
+      border: none;
+      color: #ef4444;
+      cursor: pointer;
+      padding: 6px;
+      font-size: 14px;
+      opacity: 0.6;
+      transition: all 0.15s ease;
+    }
+    .btn-del-mini:hover {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="main-wrapper">
+    <!-- Top Card: Jio Landline Activation -->
+    <div class="activation-card" id="activationCard">
+      <div class="activation-info">
+        <h2 id="activationTitle">📡 Jio AirFiber Router Detected (192.168.31.1)</h2>
+        <p id="activationDesc">Register this PC via one-time OTP to enable direct browser ringing to your Mom's phone.</p>
+      </div>
+
+      <div class="activation-actions">
+        <button id="reqOtpBtn" class="btn btn-primary" onclick="requestOtp()">
+          <span>📲 Send OTP to Registered Jio Number</span>
+        </button>
+
+        <div id="otpGroup" class="otp-input-group">
+          <input type="text" id="otpInput" class="otp-input" placeholder="6-digit OTP" maxlength="6" />
+          <button class="btn btn-dial" onclick="verifyOtp()">
+            <span>Verify & Activate</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Middle Card: Saved Contacts Book -->
+    <div class="contacts-card">
+      <div class="contacts-header">
+        <div class="contacts-title">
+          <span>📖 Saved Contacts Book</span>
+          <span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: none;" id="contactsCountBadge">0 Contacts</span>
+        </div>
+      </div>
+      
+      <div class="contact-form">
+        <input type="text" id="newContactName" class="contact-input" placeholder="Name (e.g. Mom, Dad, Home)" />
+        <input type="tel" id="newContactNumber" class="contact-input" placeholder="Phone Number (e.g. 08767322517)" />
+        <button class="btn btn-primary" onclick="addContact()">
