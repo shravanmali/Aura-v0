@@ -1,0 +1,15 @@
+{
+  "mom": {
+    "name": "Mom",
+    "number": "09876543210"
+  },
+  "emergency": {
+    "name": "Emergency",
+    "number": "112"
+  },
+  "my self": {
+    "name": "my self",
+    "number": "09876543210"
+  }
+}
+
