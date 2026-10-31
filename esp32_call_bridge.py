@@ -448,3 +448,32 @@ class ESP32CallAudioBridge:
             try:
                 self.inbound_thread.join(timeout=0.25)
             except Exception:
+                pass
+            self.inbound_thread = None
+
+        if self.outbound_thread and self.outbound_thread.is_alive():
+            try:
+                self.outbound_thread.join(timeout=0.25)
+            except Exception:
+                pass
+            self.outbound_thread = None
+
+        if self.outbound_stream:
+            try:
+                self.outbound_stream.stop_stream()
+                self.outbound_stream.close()
+            except Exception:
+                pass
+            self.outbound_stream = None
+
+        if self.silent_render_stream:
+            try:
+                self.silent_render_stream.stop_stream()
+                self.silent_render_stream.close()
+            except Exception:
+                pass
+            self.silent_render_stream = None
+
+        print("[Audio Bridge] Stopped.")
+
+bridge_instance = ESP32CallAudioBridge()
