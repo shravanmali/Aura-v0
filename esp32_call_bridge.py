@@ -278,3 +278,93 @@ class ESP32CallAudioBridge:
     def feed_esp32_mic_audio(self, pcm_bytes: bytes):
         if not self.is_active or not pcm_bytes:
             return
+        try:
+            self.mic_queue.put_nowait(pcm_bytes)
+        except queue.Full:
+            try:
+                self.mic_queue.get_nowait()
+                self.mic_queue.put_nowait(pcm_bytes)
+            except Exception:
+                pass
+
+    # Worker thread: filters mic audio and sends to CABLE Input
+    def _run_outbound_loop(self):
+        while self.is_active:
+            try:
+                pcm_bytes = self.mic_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+
+            if not self.outbound_stream:
+                continue
+
+            in_samples = len(pcm_bytes) // 2
+            out_samples_target = in_samples * 3
+
+            if self.is_muted:
+                silence_frame = b'\x00' * (out_samples_target * 4)
+                try:
+                    self.outbound_stream.write(silence_frame)
+                except Exception:
+                    pass
+                continue
+
+            try:
+                samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32)
+                if len(samples) == 0:
+                    continue
+
+                # Strip 50Hz/room rumble below 85Hz
+                filtered_hp, self.hp_zi = signal.lfilter(self.b_hp, self.a_hp, samples, zi=self.hp_zi)
+
+                # Vocal EQ boost
+                voice_eq, self.eq_zi = signal.lfilter(self.b_eq, self.a_eq, filtered_hp, zi=self.eq_zi)
+
+                # Duck mic if speaker is currently playing caller audio
+                mic_rms = float(np.sqrt(np.mean(voice_eq ** 2)))
+                now_ts = time.time()
+                time_since_caller = now_ts - self.last_caller_audio_time
+                speaker_active = (self.caller_speaker_rms > 40.0) or (time_since_caller < 0.45)
+
+                if speaker_active:
+                    if mic_rms < 400.0:
+                        target_gain = 0.0
+                    else:
+                        target_gain = 0.85
+                else:
+                    target_gain = 1.80
+
+                # Smooth gain transition to avoid pops
+                self.current_out_gain = 0.70 * self.current_out_gain + 0.30 * target_gain
+
+                if self.current_out_gain < 0.01:
+                    silence_frame = b'\x00' * (out_samples_target * 4)
+                    try:
+                        self.outbound_stream.write(silence_frame)
+                    except Exception:
+                        pass
+                    continue
+
+                boosted = voice_eq * self.current_out_gain
+
+                # Prevent audio clipping
+                mag = np.abs(boosted)
+                clip_mask = mag > 26000.0
+                if np.any(clip_mask):
+                    excess = mag[clip_mask] - 26000.0
+                    compressed = 26000.0 + (32767.0 - 26000.0) * np.tanh(excess / 6000.0)
+                    boosted[clip_mask] = np.sign(boosted[clip_mask]) * compressed
+
+                processed_16k = np.clip(boosted, -32767.0, 32767.0).astype(np.float32)
+
+                # Resample 16kHz to 48kHz for VB-Cable
+                samples_48k = signal.resample_poly(processed_16k, 3, 1)
+
+                # Convert to stereo
+                int16_48k = np.clip(samples_48k, -32767.0, 32767.0).astype(np.int16)
+                stereo_frame = np.column_stack([int16_48k, int16_48k]).tobytes()
+                self.outbound_stream.write(stereo_frame)
+            except Exception:
+                pass
+
+    # Worker thread: reads caller audio from MicroSIP and forwards to ESP32 speaker
