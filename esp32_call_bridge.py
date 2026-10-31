@@ -178,3 +178,103 @@ class ESP32CallAudioBridge:
                     continue
                 name = d['name'].upper()
                 is_loopback = d.get('isLoopbackDevice', False)
+                
+                # CABLE Input: we write mic audio here so MicroSIP can hear it
+                if 'CABLE INPUT' in name and d['maxOutputChannels'] > 0 and not is_loopback:
+                    self.cable_in_dev = d
+                    
+                # Loopback device to hear caller audio from MicroSIP
+                if 'OMEN' in name and is_loopback and self.caller_loopback_dev is None:
+                    self.caller_loopback_dev = d
+                    
+                if 'SPEAKERS (OMEN' in name and d['maxOutputChannels'] > 0 and not is_loopback and self.caller_render_dev is None:
+                    self.caller_render_dev = d
+            except Exception:
+                pass
+
+        print("[Audio Bridge] Found audio devices:")
+        print(f"  -> Mic output (CABLE Input): {self.cable_in_dev['name'] if self.cable_in_dev else 'NOT FOUND'}")
+        print(f"  -> Caller input (Loopback): {self.caller_loopback_dev['name'] if self.caller_loopback_dev else 'NOT FOUND'}")
+
+    def start(self, send_fn=None):
+        if self.is_active:
+            return
+        if send_fn:
+            self.send_to_esp32_fn = send_fn
+
+        self.is_active = True
+        self.is_muted = False
+        self.caller_speaker_rms = 0.0
+        self.last_caller_audio_time = 0.0
+        self.current_out_gain = 1.0
+        
+        silence_laptop_physical_speakers()
+        
+        # Clear out any old mic samples
+        while not self.mic_queue.empty():
+            try:
+                self.mic_queue.get_nowait()
+            except Exception:
+                break
+                
+        self._discover_devices()
+        
+        self.hp_zi = signal.lfilter_zi(self.b_hp, self.a_hp) * 0.0
+        self.eq_zi = signal.lfilter_zi(self.b_eq, self.a_eq) * 0.0
+        print("[Audio Bridge] Starting audio bridge between MicroSIP and ESP32...")
+
+        # Open output stream to CABLE Input at 48kHz stereo
+        try:
+            if self.cable_in_dev:
+                self.outbound_stream = self.pa.open(
+                    format=pyaudio.paInt16,
+                    channels=2,
+                    rate=48000,
+                    output=True,
+                    output_device_index=self.cable_in_dev['index'],
+                    frames_per_buffer=960
+                )
+                print("[Audio Bridge] Mic stream open to CABLE Input.")
+        except Exception as e:
+            print(f"[Audio Bridge] Could not open mic stream: {e}")
+
+        # Keep loopback clock running
+        try:
+            if self.caller_render_dev:
+                self.silent_render_stream = self.pa.open(
+                    format=pyaudio.paInt16,
+                    channels=2,
+                    rate=48000,
+                    output=True,
+                    output_device_index=self.caller_render_dev['index'],
+                    frames_per_buffer=960
+                )
+        except Exception:
+            self.silent_render_stream = None
+
+        # Start thread to send ESP32 mic audio to MicroSIP
+        self.outbound_thread = threading.Thread(target=self._run_outbound_loop, daemon=True)
+        self.outbound_thread.start()
+
+        # Start thread to read caller audio and send to ESP32 speaker
+        self.inbound_thread = threading.Thread(target=self._run_inbound_loop, daemon=True)
+        self.inbound_thread.start()
+
+    def is_speaker_active_in_room(self) -> bool:
+        return (time.time() - self.last_caller_audio_time) < 0.45
+
+    def set_mute(self, muted: bool):
+        self.is_muted = muted
+        state = "MUTED" if muted else "UNMUTED"
+        print(f"[Audio Bridge] Mic is now {state}")
+
+    def toggle_mute(self) -> bool:
+        self.is_muted = not self.is_muted
+        state = "MUTED" if self.is_muted else "UNMUTED"
+        print(f"[Audio Bridge] Toggled mic -> {state}")
+        return self.is_muted
+
+    # Put raw mic audio from ESP32 into queue
+    def feed_esp32_mic_audio(self, pcm_bytes: bytes):
+        if not self.is_active or not pcm_bytes:
+            return
