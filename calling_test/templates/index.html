@@ -698,3 +698,153 @@
           btn.disabled = false;
           btn.innerText = "📲 Send OTP to Registered Jio Number";
         }
+      } catch (e) {
+        alert("Failed to connect to router: " + e);
+        btn.disabled = false;
+        btn.innerText = "📲 Send OTP to Registered Jio Number";
+      }
+    }
+
+    async function verifyOtp() {
+      const otp = document.getElementById("otpInput").value.trim();
+      if (!otp || otp.length < 4) {
+        alert("Please enter the OTP received on your mobile");
+        return;
+      }
+
+      appendLog("Verifying OTP with Jio router...");
+      try {
+        const resp = await fetch("/api/jio/verify_otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ otp: otp })
+        });
+        const data = await resp.json();
+        if (data.status === "ok") {
+          appendLog("OTP verified! Jio Landline active: " + data.landline_number, "success");
+          checkJioStatus();
+        } else {
+          alert("Verification failed: " + data.message);
+        }
+      } catch (e) {
+        alert("Error: " + e);
+      }
+    }
+
+    async function startCall(isVideo = false) {
+      const number = document.getElementById("phoneInput").value.trim();
+      if (!number) {
+        alert("Please enter a valid phone number!");
+        return;
+      }
+
+      isCalling = true;
+      document.getElementById("dialBtn").style.display = "none";
+      document.getElementById("videoBtn").style.display = "none";
+      document.getElementById("hangupBtn").style.display = "flex";
+      document.getElementById("muteBtn").style.display = "flex";
+
+      const dot = document.getElementById("pulseDot");
+      const statusText = document.getElementById("stateText");
+
+      dot.className = "pulse-dot dialing";
+      statusText.innerText = (isVideo ? "Starting Video Call to " : "Dialing ") + number + "...";
+
+      appendLog(`Initiating ${isVideo ? '📹 Video Call (H.264 / Camera)' : '📞 Voice Call'} to ${number} via Jio Landline...`);
+
+      try {
+        const resp = await fetch("/api/dial", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone_number: number, video: isVideo })
+        });
+        const data = await resp.json();
+        if (data.status === "ok") {
+          pollStatus();
+        } else {
+          appendLog(`Dial error: ${data.message}`, "error");
+          hangupCall();
+        }
+      } catch (err) {
+        appendLog(`Network error contacting server: ${err}`, "error");
+        hangupCall();
+      }
+    }
+
+    function pollStatus() {
+      if (pollInterval) clearInterval(pollInterval);
+
+      pollInterval = setInterval(async () => {
+        if (!isCalling) {
+          clearInterval(pollInterval);
+          return;
+        }
+
+        try {
+          const resp = await fetch("/api/status");
+          const state = await resp.json();
+
+          const dot = document.getElementById("pulseDot");
+          const statusText = document.getElementById("stateText");
+
+          if (state.state === "dialing") {
+            dot.className = "pulse-dot dialing";
+            statusText.innerText = "Connecting to Jio IMS Core...";
+          } else if (state.state === "ringing") {
+            dot.className = "pulse-dot ringing";
+            statusText.innerText = "📞 Destination Phone is RINGING...";
+          } else if (state.state === "connected") {
+            dot.className = "pulse-dot ringing";
+            dot.style.background = "#10b981";
+            statusText.innerText = "🟢 CALL CONNECTED (Speaking Live)";
+          } else if (state.state === "ended" || state.state === "idle") {
+            hangupCall();
+          }
+
+          if (state.recent_logs && state.recent_logs.length > 0) {
+            state.recent_logs.forEach(l => {
+              appendLog(l.msg, l.type);
+            });
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }, 350);
+    }
+
+    let isMuted = false;
+    async function toggleMute() {
+      try {
+        const res = await fetch("/api/call/toggle_mute", { method: "POST" });
+        const data = await res.json();
+        isMuted = data.muted;
+        const muteText = document.getElementById("muteBtnText");
+        const muteBtn = document.getElementById("muteBtn");
+        if (isMuted) {
+          muteText.innerText = "🔇 UNMUTE MIC";
+          muteBtn.style.background = "#ef4444";
+          muteBtn.style.color = "#fff";
+        } else {
+          muteText.innerText = "🎤 MUTE MIC";
+          muteBtn.style.background = "#eab308";
+          muteBtn.style.color = "#000";
+        }
+      } catch (err) {
+        console.error("Error toggling mute:", err);
+      }
+    }
+
+    async function hangupCall() {
+      isCalling = false;
+      stopRingbackTone();
+
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+
+      document.getElementById("dialBtn").style.display = "flex";
+      document.getElementById("videoBtn").style.display = "flex";
+      document.getElementById("hangupBtn").style.display = "none";
+      document.getElementById("muteBtn").style.display = "none";
+
