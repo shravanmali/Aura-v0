@@ -548,3 +548,153 @@
         <input type="text" id="newContactName" class="contact-input" placeholder="Name (e.g. Mom, Dad, Home)" />
         <input type="tel" id="newContactNumber" class="contact-input" placeholder="Phone Number (e.g. 08767322517)" />
         <button class="btn btn-primary" onclick="addContact()">
+          <span>➕ Save Contact</span>
+        </button>
+      </div>
+
+      <div class="contacts-list" id="contactsListContainer">
+        <!-- Contact items rendered dynamically -->
+      </div>
+    </div>
+
+    <div class="container">
+      <!-- Left Card: Dial Pad & Input -->
+      <div class="card">
+        <div class="header">
+          <span class="badge">Jio AirFiber SIP Trunk</span>
+          <h1>📞 Landline Phone Ring</h1>
+          <p class="subtitle">Direct browser phone calls over your Home Wi-Fi line</p>
+        </div>
+
+        <div class="info-strip">
+          <span class="label">Caller ID (Your Landline):</span>
+          <span class="val" id="callerIdVal">+91 (Home Wi-Fi)</span>
+        </div>
+
+        <div class="display-box">
+          <input 
+            type="tel" 
+            id="phoneInput" 
+            class="phone-input" 
+            placeholder="+91 8767322517" 
+            value="+91 8767322517" 
+            autofocus 
+          />
+        </div>
+
+        <div class="keypad">
+          <button class="key" onclick="appendKey('1')">1<span class="sub">&nbsp;</span></button>
+          <button class="key" onclick="appendKey('2')">2<span class="sub">ABC</span></button>
+          <button class="key" onclick="appendKey('3')">3<span class="sub">DEF</span></button>
+          <button class="key" onclick="appendKey('4')">4<span class="sub">GHI</span></button>
+          <button class="key" onclick="appendKey('5')">5<span class="sub">JKL</span></button>
+          <button class="key" onclick="appendKey('6')">6<span class="sub">MNO</span></button>
+          <button class="key" onclick="appendKey('7')">7<span class="sub">PQRS</span></button>
+          <button class="key" onclick="appendKey('8')">8<span class="sub">TUV</span></button>
+          <button class="key" onclick="appendKey('9')">9<span class="sub">WXYZ</span></button>
+          <button class="key" onclick="appendKey('*')">*<span class="sub">&nbsp;</span></button>
+          <button class="key" onclick="appendKey('0')">0<span class="sub">+</span></button>
+          <button class="key" onclick="appendKey('#')">#<span class="sub">&nbsp;</span></button>
+        </div>
+
+        <div class="action-row">
+          <button id="dialBtn" class="btn btn-dial btn-lg" onclick="startCall(false)">
+            <span>📞 VOICE CALL</span>
+          </button>
+          <button id="videoBtn" class="btn btn-video btn-lg" onclick="startCall(true)">
+            <span>📹 VIDEO CALL</span>
+          </button>
+          <button id="hangupBtn" class="btn btn-hangup btn-lg" onclick="hangupCall()" style="display: none;">
+            <span>📴 HANG UP</span>
+          </button>
+          <button id="muteBtn" class="btn btn-lg" onclick="toggleMute()" style="display: none; background: #eab308; color: #000; font-weight: bold; border-radius: 12px; padding: 12px 18px; border: none; cursor: pointer;">
+            <span id="muteBtnText">🎤 MUTE MIC</span>
+          </button>
+          <button class="btn btn-backspace" onclick="backspaceKey()" title="Backspace">⌫</button>
+        </div>
+      </div>
+
+      <!-- Right Card: Call Status & SIP Protocol Logs -->
+      <div class="card status-panel">
+        <div class="state-indicator">
+          <div id="pulseDot" class="pulse-dot"></div>
+          <div id="stateText" class="state-text">Ready to dial</div>
+        </div>
+
+        <div class="terminal" id="terminalLog">
+          <!-- Log lines injected here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let audioCtx = null;
+    let ringInterval = null;
+    let pollInterval = null;
+    let isCalling = false;
+
+    // Web Audio Ringback Synthesizer removed to prevent overlapping with real carrier audio
+    function playIndianRingbackTone() {}
+    function stopRingbackTone() {}
+
+    function appendKey(val) {
+      const input = document.getElementById("phoneInput");
+      input.value += val;
+    }
+
+    function backspaceKey() {
+      const input = document.getElementById("phoneInput");
+      input.value = input.value.slice(0, -1);
+    }
+
+    function appendLog(text, type = "normal") {
+      const term = document.getElementById("terminalLog");
+      const line = document.createElement("div");
+      line.className = "log-line " + (type === "error" ? "log-error" : type === "success" ? "log-success" : "");
+
+      const now = new Date();
+      const timeStr = now.toTimeString().split(" ")[0] + "." + String(now.getMilliseconds()).padStart(3, "0");
+
+      line.innerHTML = `<span class="log-time">[${timeStr}]</span> ${text}`;
+      term.insertBefore(line, term.firstChild);
+    }
+
+    async function checkJioStatus() {
+      try {
+        const resp = await fetch("/api/jio/status");
+        const data = await resp.json();
+        if (data.activated) {
+          const displayNum = (data.landline_number || "").split("@")[0];
+          document.getElementById("activationTitle").innerHTML = "🟢 Jio Home Landline Activated: " + displayNum;
+          document.getElementById("activationDesc").innerText = "Direct browser calling is active. Calls route via Jio IMS Core (" + data.proxy + ").";
+          document.getElementById("reqOtpBtn").style.display = "none";
+          document.getElementById("otpGroup").style.display = "none";
+          document.getElementById("callerIdVal").innerText = displayNum;
+          appendLog("Jio Landline registered: " + displayNum, "success");
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function requestOtp() {
+      const btn = document.getElementById("reqOtpBtn");
+      btn.disabled = true;
+      btn.innerText = "⏳ Requesting OTP from Jio...";
+      appendLog("Requesting OTP handshake from Jio router (192.168.31.1:8443)...");
+
+      try {
+        const resp = await fetch("/api/jio/request_otp", { method: "POST" });
+        const data = await resp.json();
+        if (data.status === "ok") {
+          btn.style.display = "none";
+          document.getElementById("otpGroup").style.display = "flex";
+          document.getElementById("activationDesc").innerText = "OTP successfully sent to your mobile: " + (data.masked_mobile || "Registered Phone");
+          appendLog("OTP sent successfully to " + data.masked_mobile, "success");
+          document.getElementById("otpInput").focus();
+        } else {
+          alert("Error: " + data.message);
+          btn.disabled = false;
+          btn.innerText = "📲 Send OTP to Registered Jio Number";
+        }
