@@ -248,3 +248,153 @@
     }
 
     .action-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn {
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-lg {
+      flex: 1;
+      padding: 16px;
+      font-size: 16px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-dial {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+    }
+
+    .btn-dial:hover {
+      background: var(--primary-hover);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+    }
+
+    .btn-video {
+      background: #3b82f6;
+      color: #fff;
+      box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+    }
+
+    .btn-video:hover {
+      background: #2563eb;
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-hangup {
+      background: var(--danger);
+      color: #fff;
+      box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-hangup:hover {
+      background: var(--danger-hover);
+    }
+
+    .btn-backspace {
+      background: rgba(255, 255, 255, 0.06);
+      color: #fff;
+      flex: 0 0 60px;
+    }
+
+    .status-panel {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .state-indicator {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+
+    .pulse-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #9ca3af;
+    }
+
+    .pulse-dot.dialing {
+      background: #f59e0b;
+      animation: pulse 1s infinite;
+    }
+
+    .pulse-dot.ringing {
+      background: #10b981;
+      animation: pulse 0.7s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.9); opacity: 0.7; }
+      50% { transform: scale(1.3); opacity: 1; }
+      100% { transform: scale(0.9); opacity: 0.7; }
+    }
+
+    .state-text {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .terminal {
+      flex: 1;
+      background: var(--terminal-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #a7f3d0;
+      overflow-y: auto;
+      height: 380px;
+      display: flex;
+      flex-direction: column-reverse;
+    }
+
+    .log-line {
+      margin-bottom: 4px;
+      word-break: break-all;
+    }
+
+    .log-time {
+      color: #6b7280;
+      margin-right: 8px;
+    }
+
+    .log-error {
+      color: #f87171;
+    }
+
+    .log-success {
+      color: #34d399;
+      font-weight: bold;
+    }
+
