@@ -1,0 +1,6 @@
+Component,Model / Specification,Quantity,Supplier,Unit Price (INR),Purpose
+ESP32-S3 Development Board,ESP32-S3-WROOM-N16R8 Dual Type-C DOIT USB Dev Board,1,Quartz Components,807,Main controller
+8-bit RGB LED,WS2812 8-Bit RGB LED (Straight),1,Robocraze,32,Status and visual indicator
+MEMS Microphone,INMP441 MEMS High Precision Omnidirectional Microphone Module (I2S),1,Robu.in,139,Voice input
+I2S Audio DAC / Amplifier,MAX98357 I2S 3W Class-D Audio Decoder Module,1,MakerBazar.in,149,Audio output
+Speaker,Senior Sound Subwoofer Multimedia Speaker 3-inch 4 Ohm 10W,1,MakerBazar.in,85,Voice assistant audio output
