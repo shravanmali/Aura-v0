@@ -24,11 +24,19 @@ calling_test/jio_config.json
 calling_test/contacts.json
 calling_test/microsip.ini
 calling_test/microsip/
+calling_test/patch_*.py
+calling_test/fix_*.py
 
-# Local workspace scratch & uncommitted test folders
+# Scratch scripts, blueprints & internal notes
+task.md
+walkthrough.md
+*blueprint.md
+JOURNAL*.md
 gemini_car/
 scratch/
 scratch_lite.html
 Order_Tracking_Sheet*
 .env
+
+# Internal agent rules & blueprints
 GEMINI.md
