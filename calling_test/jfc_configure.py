@@ -1,3 +1,6 @@
+# Author: Shravan Mali
+# JioFiber router configuration helper script
+
 from urllib.parse import urlparse
 from ssl import CERT_NONE, create_default_context
 import argparse

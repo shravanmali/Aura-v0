@@ -1,3 +1,6 @@
+# Author: Shravan Mali
+# ESPHome firmware for Aura v0 Voice Assistant on ESP32-S3 DevKitC-1
+
 substitutions:
   name: "voice-assistant"
   friendly_name: "Voice Assistant"
@@ -34,7 +37,7 @@ wifi:
       password: !secret wifi_password_secondary
       priority: 5.0
 
-  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  # Fallback hotspot in case local Wi-Fi router disconnects
   ap:
     ssid: "Voice Assistant Fallback"
     password: !secret wifi_fallback_password
@@ -62,16 +65,18 @@ button:
     on_press:
       - micro_wake_word.start:
 
+# Two separate I2S buses so audio streaming doesn't lock up the watchdog
 i2s_audio:
-  # Microphone I2S Bus
+  # INMP441 Mic Clock Bus
   - id: i2s_in
     i2s_lrclk_pin: GPIO15
     i2s_bclk_pin: GPIO16
-  # Speaker I2S Bus
+  # MAX98357A Speaker Clock Bus
   - id: i2s_out
     i2s_lrclk_pin: GPIO6
     i2s_bclk_pin: GPIO5
 
+# INMP441 MEMS microphone on breadboard
 microphone:
   - platform: i2s_audio
     id: board_mic
@@ -81,6 +86,7 @@ microphone:
     pdm: false
     channel: left
 
+# MAX98357A 3W Class-D amplifier module
 speaker:
   - platform: i2s_audio
     id: board_speaker
@@ -90,6 +96,7 @@ speaker:
     buffer_duration: 300ms
     timeout: 1000ms
 
+# 8-pixel WS2812B RGB LED ring wired to GPIO 4
 light:
   - platform: esp32_rmt_led_strip
     channel_colors: GRB
@@ -128,6 +135,7 @@ light:
           min_brightness: 30%
           max_brightness: 100%
 
+# ESPHome voice assistant component
 voice_assistant:
   id: va
   microphone: board_mic
@@ -150,6 +158,7 @@ voice_assistant:
   on_error:
     - micro_wake_word.start:
 
+# Local on-device Alexa wake word model running on ESP32-S3
 micro_wake_word:
   id: my_wake_word
   stop_after_detection: false

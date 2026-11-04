@@ -1,3 +1,6 @@
+# Author: Shravan Mali
+# Audio bridge between ESP32 hardware and PC SIP phone (MicroSIP)
+
 import time
 import queue
 import threading
@@ -79,16 +82,12 @@ class IAudioEndpointVolume(IUnknown):
         COMMETHOD([], HRESULT, 'GetMute', (['out'], POINTER(wintypes.BOOL), 'pbMute')),
     ]
 
+# Mute laptop physical speaker so the caller sound only plays through the ESP32 speaker
 def silence_laptop_physical_speakers():
-    """
-    Configures Windows Core Audio API endpoints:
-    1. MUTES physical laptop speaker (Realtek) to prevent any acoustic leakage in the room.
-    2. UNMUTES and sets 100% volume on OMEN and VB-CABLE endpoints so WASAPI digital loopback and mic capture are 100% bit-perfect.
-    """
     try:
         enumerator = comtypes.CoCreateInstance(CLSID_MMDeviceEnumerator, IMMDeviceEnumerator, comtypes.CLSCTX_INPROC_SERVER)
-        for flow in [0, 1]:  # 0: eRender, 1: eCapture
-            collection = enumerator.EnumAudioEndpoints(flow, 1)  # DEVICE_STATE_ACTIVE
+        for flow in [0, 1]:
+            collection = enumerator.EnumAudioEndpoints(flow, 1)
             for i in range(collection.GetCount()):
                 dev = collection.Item(i)
                 props = dev.OpenPropertyStore(0)
@@ -98,13 +97,12 @@ def silence_laptop_physical_speakers():
                 vol = pEndpoint.QueryInterface(IAudioEndpointVolume)
                 if 'REALTEK' in name.upper():
                     vol.SetMute(True, None)
-                    print(f"[AUDIO BRIDGE HARDWARE SILENCE]: Muted physical speaker endpoint '{name}' (0.0 dB acoustic output).")
+                    print(f"[Audio Bridge] Muted laptop speaker '{name}' so room doesn't echo.")
                 elif 'OMEN' in name.upper() or 'CABLE' in name.upper():
                     vol.SetMute(False, None)
                     vol.SetMasterVolumeLevelScalar(1.0, None)
-                    print(f"[AUDIO BRIDGE BIT-PERFECT]: Unmuted virtual telecom endpoint '{name}' at 100% volume.")
     except Exception as e:
-        print(f"[AUDIO BRIDGE SILENCE NOTICE]: {e}")
+        print(f"[Audio Bridge] Note: Speaker mute check skipped: {e}")
 
 class ESP32CallAudioBridge:
     def __init__(self, send_to_esp32_fn=None):
@@ -115,56 +113,50 @@ class ESP32CallAudioBridge:
         self.inbound_thread = None
         self.outbound_thread = None
         
-        self.cable_in_dev = None          # WASAPI Render: ESP32 Mic -> CABLE Input (MicroSIP listens on CABLE Output)
-        self.caller_loopback_dev = None   # WASAPI Loopback: MicroSIP renders ringtone & caller to OMEN -> captured digitally
-        self.caller_render_dev = None     # WASAPI Render: Keep OMEN clock ticking
+        self.cable_in_dev = None
+        self.caller_loopback_dev = None
+        self.caller_render_dev = None
         
         self.outbound_stream = None
         self.silent_render_stream = None
         
-        # Real-time caller speaker energy tracking for Acoustic Echo Suppression (AES)
         self.caller_speaker_rms = 0.0
         self.last_caller_audio_time = 0.0
         self.current_out_gain = 1.0
         
-        # Non-blocking lockless queue for outbound mic audio (ESP32 mic -> CABLE Input)
+        # Queue for mic audio from ESP32
         self.mic_queue = queue.Queue(maxsize=120)
         
-        # DSP Filter Design: 2nd-order Butterworth High-Pass at 85Hz (strips room rumble/vibrations)
+        # 85Hz high-pass filter to remove desk rumble
         self.b_hp, self.a_hp = signal.butter(2, 85.0, 'highpass', fs=16000)
         self.hp_zi = signal.lfilter_zi(self.b_hp, self.a_hp) * 0.0
 
-        # DSP Presence Filter: Peaking EQ at 3.2kHz, Q=1.2, Gain=+4.5dB (crystalline speech intelligibility on mobile phones)
+        # Small 3.2kHz boost for vocal clarity
         self._init_presence_filter()
 
     def _init_presence_filter(self):
-        """Biquad Peaking EQ filter centered at 3200Hz to make voice cut through AMR-WB compression."""
+        # Peaking filter at 3200Hz to make voice clear over phone compression
         fs = 16000.0
         f0 = 3200.0
         gain_db = 4.5
-        Q = 1.2
-        A = 10.0 ** (gain_db / 40.0)
+        q = 1.2
+        a = 10.0 ** (gain_db / 40.0)
         w0 = 2.0 * np.pi * f0 / fs
-        alpha = np.sin(w0) / (2.0 * Q)
+        alpha = np.sin(w0) / (2.0 * q)
 
-        b0 = 1.0 + alpha * A
+        b0 = 1.0 + alpha * a
         b1 = -2.0 * np.cos(w0)
-        b2 = 1.0 - alpha * A
-        a0 = 1.0 + alpha / A
+        b2 = 1.0 - alpha * a
+        a0 = 1.0 + alpha / a
         a1 = -2.0 * np.cos(w0)
-        a2 = 1.0 - alpha / A
+        a2 = 1.0 - alpha / a
 
         self.b_eq = np.array([b0/a0, b1/a0, b2/a0], dtype=np.float32)
         self.a_eq = np.array([1.0, a1/a0, a2/a0], dtype=np.float32)
         self.eq_zi = signal.lfilter_zi(self.b_eq, self.a_eq) * 0.0
 
+    # Look for VB-Cable and loopback audio devices
     def _discover_devices(self):
-        """
-        Discovers hardware audio devices strictly over Windows WASAPI (API index 2).
-        - Outbound Mic Target: CABLE Input (VB-Audio Virtual Cable)
-        - Inbound Caller Source: Speakers (OMEN Cam & Voice) [Loopback]
-        Physical PC speakers are muted in hardware, while WASAPI captures bit-perfect digital audio!
-        """
         if self.pa is None:
             self.pa = pyaudio.PyAudio()
 
@@ -187,23 +179,22 @@ class ESP32CallAudioBridge:
                 name = d['name'].upper()
                 is_loopback = d.get('isLoopbackDevice', False)
                 
-                # 1. WASAPI CABLE Input (Render device: Python writes mic audio -> MicroSIP hears on CABLE Output)
+                # CABLE Input: we write mic audio here so MicroSIP can hear it
                 if 'CABLE INPUT' in name and d['maxOutputChannels'] > 0 and not is_loopback:
                     self.cable_in_dev = d
                     
-                # 2. WASAPI Speakers OMEN Loopback (MicroSIP plays caller audio & ringtone here -> captured digitally)
+                # Loopback device to hear caller audio from MicroSIP
                 if 'OMEN' in name and is_loopback and self.caller_loopback_dev is None:
                     self.caller_loopback_dev = d
                     
-                # 3. WASAPI Speakers OMEN Render (For silent clock keepalive)
                 if 'SPEAKERS (OMEN' in name and d['maxOutputChannels'] > 0 and not is_loopback and self.caller_render_dev is None:
                     self.caller_render_dev = d
             except Exception:
                 pass
 
-        print(f"[AUDIO BRIDGE] Discovered WASAPI Hardware Endpoints:")
-        print(f"  -> Outbound Mic Target (WASAPI CABLE Input): {self.cable_in_dev['name'] if self.cable_in_dev else 'NOT FOUND'}")
-        print(f"  -> Inbound Caller Source (WASAPI OMEN Digital Loopback): {self.caller_loopback_dev['name'] if self.caller_loopback_dev else 'NOT FOUND'}")
+        print("[Audio Bridge] Found audio devices:")
+        print(f"  -> Mic output (CABLE Input): {self.cable_in_dev['name'] if self.cable_in_dev else 'NOT FOUND'}")
+        print(f"  -> Caller input (Loopback): {self.caller_loopback_dev['name'] if self.caller_loopback_dev else 'NOT FOUND'}")
 
     def start(self, send_fn=None):
         if self.is_active:
@@ -217,10 +208,9 @@ class ESP32CallAudioBridge:
         self.last_caller_audio_time = 0.0
         self.current_out_gain = 1.0
         
-        # Mute physical speakers before any telecom audio streams
         silence_laptop_physical_speakers()
         
-        # Clear mic queue
+        # Clear out any old mic samples
         while not self.mic_queue.empty():
             try:
                 self.mic_queue.get_nowait()
@@ -231,9 +221,9 @@ class ESP32CallAudioBridge:
         
         self.hp_zi = signal.lfilter_zi(self.b_hp, self.a_hp) * 0.0
         self.eq_zi = signal.lfilter_zi(self.b_eq, self.a_eq) * 0.0
-        print("[AUDIO BRIDGE] Starting Studio-Grade Headless Telecom Audio Bridge (Zero PC Speaker, Pure ESP32, Full Duplex WASAPI)...")
+        print("[Audio Bridge] Starting audio bridge between MicroSIP and ESP32...")
 
-        # 1. Initialize Outbound Stream (ESP32 Mic 16k -> Resampled 48k Stereo -> WASAPI CABLE Input)
+        # Open output stream to CABLE Input at 48kHz stereo
         try:
             if self.cable_in_dev:
                 self.outbound_stream = self.pa.open(
@@ -244,11 +234,11 @@ class ESP32CallAudioBridge:
                     output_device_index=self.cable_in_dev['index'],
                     frames_per_buffer=960
                 )
-                print("[AUDIO BRIDGE] Outbound Stream Open (WASAPI CABLE Input @ 48kHz Stereo, buffer=20ms).")
+                print("[Audio Bridge] Mic stream open to CABLE Input.")
         except Exception as e:
-            print(f"[AUDIO BRIDGE OUTBOUND ERROR]: {e}")
+            print(f"[Audio Bridge] Could not open mic stream: {e}")
 
-        # 2. Initialize Silent Render Stream on OMEN (keeps WASAPI loopback clock running seamlessly)
+        # Keep loopback clock running
         try:
             if self.caller_render_dev:
                 self.silent_render_stream = self.pa.open(
@@ -262,35 +252,30 @@ class ESP32CallAudioBridge:
         except Exception:
             self.silent_render_stream = None
 
-        # 3. Dedicated Outbound Worker Thread (Non-blocking mic queue consumer with DSP & polyphase 3x upsampling)
+        # Start thread to send ESP32 mic audio to MicroSIP
         self.outbound_thread = threading.Thread(target=self._run_outbound_loop, daemon=True)
         self.outbound_thread.start()
 
-        # 4. Start Inbound Thread (WASAPI OMEN Loopback -> Downsample 48k to 16k -> ESP32 Speaker)
+        # Start thread to read caller audio and send to ESP32 speaker
         self.inbound_thread = threading.Thread(target=self._run_inbound_loop, daemon=True)
         self.inbound_thread.start()
 
     def is_speaker_active_in_room(self) -> bool:
-        """Returns True if the ESP32 speaker is currently sounding or draining buffered audio."""
         return (time.time() - self.last_caller_audio_time) < 0.45
 
     def set_mute(self, muted: bool):
         self.is_muted = muted
-        state_str = "MUTED (silent to caller)" if muted else "UNMUTED (live audio)"
-        print(f"[AUDIO BRIDGE] Microphone state: {state_str}")
+        state = "MUTED" if muted else "UNMUTED"
+        print(f"[Audio Bridge] Mic is now {state}")
 
     def toggle_mute(self) -> bool:
         self.is_muted = not self.is_muted
-        state_str = "MUTED" if self.is_muted else "UNMUTED"
-        print(f"[AUDIO BRIDGE] Microphone toggled -> {state_str}")
+        state = "MUTED" if self.is_muted else "UNMUTED"
+        print(f"[Audio Bridge] Toggled mic -> {state}")
         return self.is_muted
 
+    # Put raw mic audio from ESP32 into queue
     def feed_esp32_mic_audio(self, pcm_bytes: bytes):
-        """
-        STRICTLY NON-BLOCKING:
-        Puts raw 16kHz Mono PCM from ESP32 mic into worker queue in < 0.01ms.
-        Guarantees asyncio event loop and aioesphomeapi TCP client are NEVER blocked!
-        """
         if not self.is_active or not pcm_bytes:
             return
         try:
@@ -302,21 +287,8 @@ class ESP32CallAudioBridge:
             except Exception:
                 pass
 
+    # Worker thread: filters mic audio and sends to CABLE Input
     def _run_outbound_loop(self):
-        """
-        Dedicated background worker thread for processing and writing ESP32 mic audio to WASAPI CABLE Input.
-        Runs DSP outside the asyncio thread:
-        1. Mute check: writes silence if muted.
-        2. 85Hz High-Pass Filter (strips room rumble).
-        3. 3.2kHz Vocal Presence EQ (+4.5dB wideband boost).
-        4. Intelligent Acoustic Echo Suppression (AES): When caller is speaking through the ESP32 speaker,
-           attenuates the mic feedback so caller does NOT hear an echo of themselves.
-        5. Clean Dynamic Gain Boost (1.80x when room user speaks, noise-floor gate when silent).
-        6. Anti-Clipping Soft Limiter.
-        7. Polyphase FIR 3x Upsampling (16kHz -> 48kHz) in 0.1ms.
-        8. Writes stereo 48kHz PCM to WASAPI CABLE Input -> MicroSIP transmits crystal clear AMR-WB HD Voice to phone.
-        """
-        print("[AUDIO BRIDGE] Dedicated Outbound DSP Worker Thread active.")
         while self.is_active:
             try:
                 pcm_bytes = self.mic_queue.get(timeout=0.1)
@@ -326,12 +298,10 @@ class ESP32CallAudioBridge:
             if not self.outbound_stream:
                 continue
 
-            # Target 48kHz frame count = 3x number of 16kHz input samples
             in_samples = len(pcm_bytes) // 2
             out_samples_target = in_samples * 3
 
             if self.is_muted:
-                # Transmit pure silence when muted (stereo 48kHz)
                 silence_frame = b'\x00' * (out_samples_target * 4)
                 try:
                     self.outbound_stream.write(silence_frame)
@@ -344,34 +314,30 @@ class ESP32CallAudioBridge:
                 if len(samples) == 0:
                     continue
 
-                # 1. 85Hz High-Pass Filter (strips mechanical vibrations and AC rumble)
+                # Strip 50Hz/room rumble below 85Hz
                 filtered_hp, self.hp_zi = signal.lfilter(self.b_hp, self.a_hp, samples, zi=self.hp_zi)
 
-                # 2. 3.2kHz Vocal Presence Equalization (+4.5dB boost for phone clarity)
+                # Vocal EQ boost
                 voice_eq, self.eq_zi = signal.lfilter(self.b_eq, self.a_eq, filtered_hp, zi=self.eq_zi)
 
-                # 3. Dynamic Gain & Vocal Presence with Acoustic Echo Cancellation
+                # Duck mic if speaker is currently playing caller audio
                 mic_rms = float(np.sqrt(np.mean(voice_eq ** 2)))
                 now_ts = time.time()
                 time_since_caller = now_ts - self.last_caller_audio_time
                 speaker_active = (self.caller_speaker_rms > 40.0) or (time_since_caller < 0.45)
 
                 if speaker_active:
-                    # When caller is speaking or speaker is active in room:
-                    # Attenuate mic so caller hears zero echo of themselves, while allowing double-talk
                     if mic_rms < 400.0:
                         target_gain = 0.0
                     else:
                         target_gain = 0.85
                 else:
-                    # Full duplex speech transmission when speaker is silent
                     target_gain = 1.80
 
-                # Smooth gain transition (20ms time constant) to prevent audible clicks/pops
+                # Smooth gain transition to avoid pops
                 self.current_out_gain = 0.70 * self.current_out_gain + 0.30 * target_gain
 
                 if self.current_out_gain < 0.01:
-                    # Keep VB-CABLE clocked with silence frame
                     silence_frame = b'\x00' * (out_samples_target * 4)
                     try:
                         self.outbound_stream.write(silence_frame)
@@ -381,7 +347,7 @@ class ESP32CallAudioBridge:
 
                 boosted = voice_eq * self.current_out_gain
 
-                # 4. Anti-clipping soft tanh compression above 26000
+                # Prevent audio clipping
                 mag = np.abs(boosted)
                 clip_mask = mag > 26000.0
                 if np.any(clip_mask):
@@ -391,30 +357,23 @@ class ESP32CallAudioBridge:
 
                 processed_16k = np.clip(boosted, -32767.0, 32767.0).astype(np.float32)
 
-                # 5. Polyphase FIR 3x Upsampling: 16kHz -> 48kHz (executes in ~0.1ms, zero latency!)
+                # Resample 16kHz to 48kHz for VB-Cable
                 samples_48k = signal.resample_poly(processed_16k, 3, 1)
 
-                # 6. Convert Mono to Stereo for WASAPI CABLE Input
+                # Convert to stereo
                 int16_48k = np.clip(samples_48k, -32767.0, 32767.0).astype(np.int16)
                 stereo_frame = np.column_stack([int16_48k, int16_48k]).tobytes()
                 self.outbound_stream.write(stereo_frame)
             except Exception:
                 pass
 
+    # Worker thread: reads caller audio from MicroSIP and forwards to ESP32 speaker
     def _run_inbound_loop(self):
-        """
-        Captures caller audio & ringtone from MicroSIP via WASAPI Digital Loopback on OMEN.
-        Runs natively at 48kHz stereo with 20ms frames (960 samples), averages to mono,
-        decimates 3:1 to native 16kHz mono (320 samples = 20ms = 640 bytes),
-        and streams directly to ESP32 MAX98357A speaker with ~25ms round-trip latency.
-        Physical laptop speakers are muted, so ZERO sound emits from the PC!
-        """
         if not self.caller_loopback_dev:
-            print("[AUDIO BRIDGE ERROR] Caller Loopback device not found.")
+            print("[Audio Bridge] Could not find loopback device.")
             return
 
         try:
-            # 960 frames @ 48kHz = exactly 20ms audio
             in_stream = self.pa.open(
                 format=pyaudio.paInt16,
                 channels=2,
@@ -423,9 +382,7 @@ class ESP32CallAudioBridge:
                 input_device_index=self.caller_loopback_dev['index'],
                 frames_per_buffer=960
             )
-            print("[AUDIO BRIDGE] Ultra-Low Latency Inbound Stream Active (OMEN Digital Loopback -> ESP32 Speaker @ 20ms frames).")
 
-            # Prime the clock with a tiny silent frame
             if self.silent_render_stream:
                 try:
                     self.silent_render_stream.write(b'\x00' * 3840)
@@ -434,13 +391,10 @@ class ESP32CallAudioBridge:
 
             last_clock_tick = time.time()
             last_sent_time = 0.0
-
-            # Pre-allocated 20ms silence buffer for keepalive
             silence_keepalive = b'\x00' * 640
 
             while self.is_active:
                 now = time.time()
-                # Keep WASAPI loopback clock alive during quiet periods
                 if now - last_clock_tick > 0.08:
                     if self.silent_render_stream:
                         try:
@@ -454,23 +408,20 @@ class ESP32CallAudioBridge:
                     continue
 
                 samples = np.frombuffer(data, dtype=np.int16).reshape(-1, 2)
-                # Average left & right channels to mono float32
                 mono_48k = ((samples[:, 0].astype(np.int32) + samples[:, 1].astype(np.int32)) // 2).astype(np.float32)
 
-                # Decimate 48kHz -> 16kHz (3:1: 960 samples -> 320 samples = 20ms = 640 bytes)
+                # Downsample 48kHz to 16kHz for ESP32
                 mono_16k = mono_48k[::3]
 
-                # Measure RMS energy of caller speech / ringtone
                 instant_rms = float(np.sqrt(np.mean(mono_16k ** 2)))
                 self.caller_speaker_rms = 0.70 * self.caller_speaker_rms + 0.30 * instant_rms
 
-                # Hangover tracking: Keep forwarding for 250ms after speech to preserve word endings & soft consonants
                 if instant_rms > 20.0:
                     self.last_caller_audio_time = now
 
                 speech_active = (instant_rms > 20.0) or ((now - self.last_caller_audio_time) < 0.250)
 
-                # Forward 16kHz 16-bit mono PCM to ESP32 MAX98357A speaker:
+                # Send 16kHz audio to ESP32 MAX98357A speaker
                 if self.send_to_esp32_fn:
                     if speech_active:
                         boosted_caller = np.clip(mono_16k * 1.6, -32767.0, 32767.0)
@@ -478,19 +429,18 @@ class ESP32CallAudioBridge:
                         self.send_to_esp32_fn(pcm_out)
                         last_sent_time = now
                     elif (now - last_sent_time) > 2.5:
-                        # Gentle keepalive once every 2.5s (refreshes 5s speaker timeout without buffer congestion)
                         self.send_to_esp32_fn(silence_keepalive)
                         last_sent_time = now
 
             in_stream.stop_stream()
             in_stream.close()
         except Exception as e:
-            print(f"[AUDIO BRIDGE INBOUND ERROR]: {e}")
+            print(f"[Audio Bridge] Inbound stream error: {e}")
 
     def stop(self):
         if not self.is_active:
             return
-        print("[AUDIO BRIDGE] Stopping Headless Telecom Audio Bridge...")
+        print("[Audio Bridge] Stopping audio bridge...")
         self.is_active = False
         self.caller_speaker_rms = 0.0
 
@@ -524,6 +474,6 @@ class ESP32CallAudioBridge:
                 pass
             self.silent_render_stream = None
 
-        print("[AUDIO BRIDGE] Headless Bridge stopped cleanly.")
+        print("[Audio Bridge] Stopped.")
 
 bridge_instance = ESP32CallAudioBridge()

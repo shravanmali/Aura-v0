@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.log
 *.wav
+*.rpt
 
 # Virtual Environment
 venv/
@@ -23,10 +24,16 @@ calling_test/jio_config.json
 calling_test/contacts.json
 calling_test/microsip.ini
 calling_test/microsip/
+calling_test/patch_*.py
+calling_test/fix_*.py
 
-# Temporary / Scratch directories & tools
+# Scratch scripts, blueprints & internal notes
+task.md
+walkthrough.md
+*blueprint.md
+JOURNAL*.md
 gemini_car/
 scratch/
 scratch_lite.html
-Order_Tracking_Sheet (2).md
+Order_Tracking_Sheet*
 .env

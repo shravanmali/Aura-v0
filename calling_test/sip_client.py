@@ -1,7 +1,5 @@
-"""
-Minimal SIP UDP Client for Wi-Fi Calling / Landline Testing
-Implements standard RFC 3261 SIP INVITE, CANCEL, and BYE signaling over UDP.
-"""
+# Author: Shravan Mali
+# Simple SIP UDP test client for local Wi-Fi calling tests
 
 import socket
 import uuid
@@ -37,7 +35,7 @@ class SimpleSIPClient:
             self.log(f"SIP listener started on {self.local_ip}:{self.local_port}")
             return True
         except Exception as e:
-            self.log(f"Warning: Could not bind port {self.local_port} ({e}). Falling back to ephemeral port.")
+            self.log(f"Port {self.local_port} busy ({e}), trying random port instead.")
             try:
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 self.sock.settimeout(1.0)
@@ -45,10 +43,10 @@ class SimpleSIPClient:
                 self.local_port = self.sock.getsockname()[1]
                 self.running = True
                 threading.Thread(target=self._listen_loop, daemon=True).start()
-                self.log(f"SIP listener active on ephemeral port {self.local_port}")
+                self.log(f"SIP listener started on port {self.local_port}")
                 return True
             except Exception as e2:
-                self.log(f"Failed to start UDP socket: {e2}")
+                self.log(f"Could not open UDP socket: {e2}")
                 return False
 
     def _listen_loop(self):
@@ -57,7 +55,7 @@ class SimpleSIPClient:
                 data, addr = self.sock.recvfrom(4096)
                 msg = data.decode('utf-8', errors='ignore')
                 first_line = msg.split('\r\n')[0] if '\r\n' in msg else msg
-                self.log(f"<-- Received from {addr[0]}:{addr[1]}: {first_line}")
+                self.log(f"<-- From {addr[0]}: {first_line}")
                 self._handle_response(msg)
             except socket.timeout:
                 continue
@@ -70,24 +68,23 @@ class SimpleSIPClient:
         lines = msg.split('\r\n')
         status_line = lines[0] if lines else ""
         if "100 Trying" in status_line:
-            self.log("Gateway received call request (100 Trying). Routing to destination carrier...")
+            self.log("Gateway received request (100 Trying)")
         elif "180 Ringing" in status_line:
-            self.log(">>> [180 RINGING] Remote destination phone is actively ringing!")
+            self.log("Phone is ringing! (180 Ringing)")
         elif "200 OK" in status_line:
-            self.log("Call answered by recipient.")
+            self.log("Call answered (200 OK)")
         elif "401 Unauthorized" in status_line or "407 Proxy Authentication" in status_line:
-            self.log("Gateway requested IMS Authentication (Jio carrier challenge).")
+            self.log("Router requested IMS authentication")
         elif "486 Busy Here" in status_line:
-            self.log("Recipient is busy.")
+            self.log("Recipient is busy")
         elif "487 Request Terminated" in status_line:
-            self.log("Call cancelled.")
+            self.log("Call cancelled")
 
     def dial(self, from_number, to_number, host_ip=None):
         if not self.sock:
             self.start_listener()
 
         if host_ip is None:
-            # Detect local IP
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.connect((self.gateway_ip, 80))
@@ -116,7 +113,7 @@ class SimpleSIPClient:
             f"Content-Length: 0\r\n\r\n"
         )
 
-        self.log(f"--> Sending SIP INVITE to {to_number} via {self.gateway_ip}:{self.gateway_port}...")
+        self.log(f"--> Sending SIP INVITE to {to_number}...")
         try:
             self.sock.sendto(sip_invite.encode('utf-8'), (self.gateway_ip, self.gateway_port))
             return True, self.call_id
@@ -139,7 +136,7 @@ class SimpleSIPClient:
             f"Content-Length: 0\r\n\r\n"
         )
 
-        self.log(f"--> Sending SIP CANCEL to terminate ringing...")
+        self.log("--> Sending SIP CANCEL to hang up...")
         try:
             self.sock.sendto(sip_cancel.encode('utf-8'), (self.gateway_ip, self.gateway_port))
             self.active_call = False
@@ -156,4 +153,3 @@ class SimpleSIPClient:
             except Exception:
                 pass
             self.sock = None
-

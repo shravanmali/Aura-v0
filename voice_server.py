@@ -1,3 +1,6 @@
+# Author: Shravan Mali
+# Main Python server for Aura v0 ESP32-S3 Voice Assistant
+
 import os
 import sys
 import io
@@ -28,7 +31,7 @@ import requests
 import numpy as np
 import noisereduce as nr
 
-# Persistent HTTP Keep-Alive Session Pool (Slashes TTS TLS Handshake Latency by 52%)
+# Keep connection open to speed up HTTP requests
 cloud_http_session = requests.Session()
 cloud_http_session.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -48,7 +51,7 @@ try:
 except Exception:
     pass
 
-# Enable Windows 1ms high-resolution multimedia timer for sub-millisecond audio pacing
+# Windows timer tweak for smoother audio streaming
 try:
     import ctypes
     ctypes.windll.winmm.timeBeginPeriod(1)
@@ -82,7 +85,7 @@ cartesia_cooldown_until = 0
 tts_test_mode = False   # Primary Tier 1: Cartesia Sonic Ultra-Low Latency Engine
 
 
-# --- CALIBRATED VOLUME NORMALIZATION & DYNAMIC GAIN ENGINE ---
+# --- Volume Settings ---
 VOICE_BASE_GAIN = {
     # Tier 1: Cartesia Sonic Voices
     "cartesia_en": 0.78,
@@ -125,7 +128,7 @@ def normalize_numbers_and_time(text: str) -> str:
         t = re.sub(r'\b' + re.escape(word) + r'\b', num, t, flags=re.IGNORECASE)
     return t
 
-# --- PROACTIVE TEMPORAL MEMORY BANK ---
+# --- Memory Cache ---
 temporal_context = {
     "last_entity": None,
     "entity_type": None,
@@ -154,7 +157,7 @@ def get_active_temporal_context() -> dict | None:
         return None
     return temporal_context
 
-# --- ACOUSTIC ENVIRONMENT SENSING & DYNAMIC SOUND RADAR ---
+# --- Room Noise Check ---
 def calculate_ambient_noise_profile(raw_pcm: bytes) -> dict:
     """
     Measures ambient room noise floor from pre-speech buffer (120ms to 450ms).
@@ -189,7 +192,7 @@ def calculate_ambient_noise_profile(raw_pcm: bytes) -> dict:
         "radar_gain": round(radar_gain, 3)
     }
 
-# --- ACOUSTIC SPEECH CADENCE & URGENCY ENGINE ---
+# --- Speech Cadence & Speed ---
 def analyze_speech_cadence(raw_pcm: bytes, transcript: str) -> dict:
     """
     Computes speech duration, word count, Words Per Minute (WPM), and cadence state.
@@ -528,7 +531,7 @@ CARTESIA_VOICE_MAP = {
     "mr": {"id": "07bc462a-c644-49f1-baf7-82d5599131be", "name": "Sindhu"},
 }
 
-# --- PERSISTENT MEMORY & STATE ---
+# --- Saved Memory & State ---
 MEMORY_FILE = "memory.json"
 conversation_history = deque(maxlen=12)  # Retain last 12 conversational turns (6 exchanges)
 seen_news_history = deque(maxlen=80)  # Tracks recently spoken headlines to guarantee zero repetition
@@ -542,7 +545,7 @@ FOLLOW_UP_WORDS = [
     "biju", "bija", "vadhu", "aagal", "aagal janavo",
     "બીજા", "બીજું", "વધુ", "આગળ", "બીજા સમાચાર"
 ]
-# --- TIMER, STOPWATCH & ALARM STATE ---
+# --- Timers & Alarms ---
 active_timers = {}  # timer_id -> dict: {id, name, duration, start_time, end_time, context, completion_phrase, lang, task}
 active_stopwatch = {
     "running": False,
@@ -1054,7 +1057,7 @@ button_key_cache = None
 wake_word_button_key = None
 aura_led_key = None
 
-# --- AURA 8-BIT WS2812 RGB LED STATE CONTROLLER ---
+# --- WS2812 LED Control ---
 def set_aura_led(mode: str):
     """
     Sets the 8-bit WS2812 RGB LED strip pattern based on voice assistant / telephony state.
@@ -1117,7 +1120,7 @@ active_pipeline_task = None
 active_audio_queue = None
 AUDIO_CACHE = {}  # In-memory dictionary cache for sub-millisecond audio playback
 
-# --- GOOGLE WEBRTC-STYLE ACOUSTIC ECHO CANCELLATION (AEC) & SPECTRAL NOISE SUBTRACTION ---
+# --- Echo Reduction ---
 speaker_reference_ring = deque(maxlen=48000)  # Stores last 3 seconds of 16kHz 16-bit PCM sent to MAX98357A
 last_speaker_active_ts = 0.0
 
@@ -1195,7 +1198,7 @@ def get_audio_stream_lock():
         audio_stream_lock = asyncio.Lock()
     return audio_stream_lock
 
-# --- PRIORITY PREEMPTION & MIC BARGE-IN STATE ---
+# --- Microphone Interruption (Barge-In) ---
 active_recording_task = None
 timer_preemption_active = False
 pending_deferred_answer = None
@@ -1205,7 +1208,7 @@ timer_preempted_user_query = None
 pending_priority_alerts = []       # Thread-safe queue for alerts expiring while user is speaking
 pending_disconnected_alerts = []   # Buffer with 90s TTL if ESP32 Wi-Fi briefly drops
 
-# --- PREDICTIVE FOLLOW-UP & ZERO-WAKE-WORD ACTIVE LISTENING STATE ---
+# --- Follow-Up Listening ---
 active_followup_window = {
     "is_active": False,
     "consecutive_turns": 0,
@@ -1314,7 +1317,7 @@ def extract_followup_decision(full_raw: str, full_clean: str, user_query: str = 
     return False
 
 def get_bridge_phrase(lang: str) -> str:
-    """Localized bridge seamlessly connecting the timer alert to the user's query answer."""
+    """Localized bridge connecting the timer alert to the user's query answer."""
     bridges = {
         "hi": " और आपके सवाल का जवाब: ",
         "mr": " आणि तुमच्या प्रश्नाचे उत्तर: ",
@@ -1451,7 +1454,7 @@ def load_memory():
     save_memory(initial)
     return initial
 
-# --- ADVANCED SEMANTIC MEMORY ENGINE (EAV & PRONOUN INVERSION) ---
+# --- User Fact Storage ---
 
 PRONOUN_MAP_EN = [
     (r"\bi am\b", "you are"),
@@ -1663,7 +1666,7 @@ async def broadcast(msg_type, data):
             except KeyError:
                 pass
 
-# --- AUDIO SYNTHESIS & CONDITIONING ---
+# --- Audio Processing ---
 def make_chime_pcm(freq1=659.25, freq2=880.0, duration=0.45, sample_rate=16000) -> bytes:
     """Generates a pleasant two-tone musical chime in pure Python."""
     samples = []
@@ -1744,7 +1747,7 @@ def condense_silence(raw_pcm: bytes, sample_rate: int = 16000, max_pause_ms: int
     """Backwards-compatible wrapper preserving natural speech rhythm without distortion."""
     return optimize_audio_for_esp32(raw_pcm, sample_rate=sample_rate, threshold=threshold)
 
-# --- REAL-TIME WEATHER FETCHER ---
+# --- Weather Fetcher ---
 WMO_CODES = {
     0: "Clear sky",
     1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
@@ -1930,7 +1933,7 @@ def get_live_weather(city: str = "Palghar", query: str = "") -> str | None:
             return "Weather in Palghar, Maharashtra: 31°C, Clear Sky, Humidity 58%, Wind 9 km/h, Rain chance 0%"
     return None
 
-# --- REAL-TIME STOCK MARKET FETCHER ---
+# --- Stock Price Fetcher ---
 STOCK_LOOKUP = {
     'nifty': ('^NSEI', 'Nifty 50'),
     'nifty 50': ('^NSEI', 'Nifty 50'),
@@ -2161,7 +2164,7 @@ def get_live_stock_quote(query: str) -> str | None:
 
 FUEL_CACHE = {} # key -> (timestamp, result_str)
 
-# --- REAL-TIME FUEL & COMMERCIAL COMMODITY FETCHER ---
+# --- Fuel & Commodity Prices ---
 def get_live_fuel_price(fuel_query: str = "petrol", location: str = "Palghar") -> str | None:
     """Fetches real-time fuel prices (Petrol, Diesel, CNG, LPG) in ~250ms."""
     global FUEL_CACHE
@@ -2794,7 +2797,7 @@ def search_live_products(query: str) -> str | None:
         return res
     return None
 
-# --- REAL-TIME NEWS FETCHER (WITH ANTI-REPETITION & TOPIC ROTATION) ---
+# --- News Headlines ---
 def normalize_title(t: str) -> str:
     """Normalizes headline for deduplication, stripping publisher and punctuation."""
     clean = t.split(' - ')[0] if ' - ' in t else t
@@ -2968,7 +2971,7 @@ def get_live_news(query: str, location: str = "Palghar", lang: str = "en") -> st
         return f"Topic (Palghar Navli & Leopard News): {navli_fact}"
     return None
 
-# --- INTERACTIVE BRIEFING & GUIDED STEP-BY-STEP ENGINE ---
+# --- Step-By-Step Guides ---
 active_briefing = {
     "topic_id": None,
     "title": None,
@@ -3419,7 +3422,7 @@ HOW TO HANDLE THIS USER TURN:
 
     return None, None
 
-# --- SCRIPT BLEED & PHONETIC SANITIZER ---
+# --- Text Sanitizer for TTS ---
 def sanitize_mixed_indic_script(text: str) -> str:
     """
     Sanitizes mixed Indic script token hallucinations emitted by Whisper (e.g. 'તुम्हाला' -> 'तुम्हाला', 'આवाज' -> 'आवाज').
@@ -3527,7 +3530,7 @@ def extract_explicit_language_request(query: str) -> str | None:
         
     return None
 
-# --- PIPELINE: 1. STT (Groq Whisper) ---
+# --- Step 1: Speech to Text (Groq Whisper) ---
 def run_groq_whisper(raw_pcm: bytes) -> tuple[str, float]:
     """Transcribes audio using Groq Whisper Large V3 Turbo with Indic script bleed protection."""
     cleaned_pcm = optimize_audio_for_esp32(raw_pcm, sample_rate=16000, threshold=200)
@@ -3705,7 +3708,7 @@ def format_current_date(lang: str = "en") -> str:
     else:
         return f"Today is {day_name}, {month_name} {day_num}, {year}."
 
-# --- PIPELINE: 2. LLM (Groq Qwen/Llama) ---
+# --- Step 2: LLM Brain (Groq) ---
 
 WEB_SEARCH_CACHE = {} # query -> (timestamp, formatted_results)
 
@@ -4440,7 +4443,7 @@ def handle_unmute_intent(lang: str = "en") -> str:
     return msg_map.get(lang, msg_map["en"])
 
 
-# --- IN-CALL VERBAL COMMAND RECOGNITION (Hangup, Mute, Unmute) ---
+# --- Call Voice Commands ---
 in_call_speech_buffer = bytearray()
 in_call_speech_frames = 0
 in_call_silence_frames = 0
@@ -4586,7 +4589,7 @@ def stream_groq_llm(user_query: str, detected_lang: str | None = None, cadence_i
             is_last = (i == len(merged) - 1)
             yield (s, lang_code, is_last, f"[LANG: {lang_code.upper()}] {text}")
     
-    # --- FAST-PATH 0A: COMPOUND MULTI-COMMAND INTENTS (Device actions + Knowledge routing) ---
+    # --- Multi-Command Handling ---
     compound_reply, remaining_query = handle_compound_commands(user_query, det_lang or "en")
     if compound_reply and not remaining_query:
         # Case A: Only device commands executed (e.g. Volume 75% + Timer 10m)
@@ -4601,7 +4604,7 @@ def stream_groq_llm(user_query: str, detected_lang: str | None = None, cadence_i
         user_query = remaining_query
         lower_uq = user_query.lower().strip()
 
-    # --- FAST-PATH 0B: DIRECT PHONE CALLING VIA JIO LANDLINE ---
+    # --- Jio Landline Calling ---
     call_target = parse_call_intent(user_query)
     if call_target:
         call_ack = handle_call_intent(call_target, lang=det_lang or "en")
@@ -4610,7 +4613,7 @@ def stream_groq_llm(user_query: str, detected_lang: str | None = None, cadence_i
         yield from yield_fastpath_clauses(call_ack, det_lang or "en", is_followup=False)
         return
 
-    # --- FAST-PATH 0B-1: HEADLESS CALL HANG UP ---
+    # --- Call Hangup ---
     if is_hangup_command(user_query):
         hangup_ack = handle_hangup_intent(lang=det_lang or "en")
         print(f"[CALL HANGUP DISPATCHED]: '{hangup_ack}'")
@@ -4618,7 +4621,7 @@ def stream_groq_llm(user_query: str, detected_lang: str | None = None, cadence_i
         yield from yield_fastpath_clauses(hangup_ack, det_lang or "en", is_followup=False)
         return
 
-    # --- FAST-PATH 0B-2: HEADLESS CALL MUTE / UNMUTE ---
+    # --- Call Mute / Unmute ---
     if is_unmute_command(user_query):
         unmute_ack = handle_unmute_intent(lang=det_lang or "en")
         print(f"[CALL UNMUTE DISPATCHED]: '{unmute_ack}'")
@@ -4633,7 +4636,7 @@ def stream_groq_llm(user_query: str, detected_lang: str | None = None, cadence_i
         yield from yield_fastpath_clauses(mute_ack, det_lang or "en", is_followup=False)
         return
 
-    # --- FAST-PATH 0C: RESPONSIVE USER MEMORY (Wipe, Register, Name, Recall, Remember, Forget) ---
+    # --- User Memory Commands ---
     is_wipe_all = bool(re.search(
         r'\b(?:delete|clear|wipe|erase|reset|remove)\s+(?:all\s+)?(?:your\s+|my\s+|the\s+)?memor(?:y|ies)\b|\bforget\s+everything\b|\breset\s+(?:all\s+)?memory\b',
         lower_uq
@@ -4961,7 +4964,7 @@ def stream_groq_llm(user_query: str, detected_lang: str | None = None, cadence_i
         yield from yield_fastpath_clauses(ans, l)
         return
 
-    # --- FAST-PATH 1: PENDING PROACTIVE COOKING TIMER CONFIRMATION / REJECTION ---
+    # --- Cooking Timer Confirmation ---
     global pending_timer_suggestion, active_timers, active_stopwatch, active_alarms, loop
     if pending_timer_suggestion and (time.time() - pending_timer_suggestion.get("timestamp", 0) < 60):
         if any(w in lower_uq for w in AFFIRMATIONS) or lower_uq in ["yes", "haan", "sure", "ha", "haa", "kar do", "laga do", "lagao", "karo", "ok", "okay"]:
@@ -4983,7 +4986,7 @@ def stream_groq_llm(user_query: str, detected_lang: str | None = None, cadence_i
             yield from yield_fastpath_clauses(ans, det_lang or "en")
             return
 
-    # --- FAST-PATH 2: PROACTIVE COOKING DETECTION ---
+    # --- Cooking Timer Detection ---
     cooking_info = detect_proactive_cooking(user_query, lang=det_lang or 'en')
     if cooking_info:
         pending_timer_suggestion = {
@@ -5001,7 +5004,7 @@ def stream_groq_llm(user_query: str, detected_lang: str | None = None, cadence_i
         yield from yield_fastpath_clauses(ans, det_lang or "en", is_followup=True)
         return
 
-    # --- FAST-PATH 3: DIRECT TIMER CREATION ---
+    # --- Set Timer ---
     direct_timer = parse_direct_timer(user_query)
     if direct_timer:
         t_secs, t_name = direct_timer
@@ -5067,26 +5070,26 @@ def stream_groq_llm(user_query: str, detected_lang: str | None = None, cadence_i
         yield from yield_fastpath_clauses(ans, det_lang or "en")
         return
 
-    # --- FAST-PATH 4: TIMER STATUS QUERY ---
+    # --- Timer Status ---
     if is_timer_query(user_query):
         ans = handle_timer_query(user_query, det_lang or "en")
         yield from yield_fastpath_clauses(ans, det_lang or "en")
         return
 
-    # --- FAST-PATH 5: TIMER CANCELLATION ---
+    # --- Cancel Timer ---
     if is_timer_cancel(user_query):
         ans = handle_timer_cancel(user_query, det_lang or "en")
         yield from yield_fastpath_clauses(ans, det_lang or "en")
         return
 
-    # --- FAST-PATH 6: STOPWATCH INTENT ---
+    # --- Stopwatch Commands ---
     sw_action = parse_stopwatch_intent(user_query)
     if sw_action:
         ans = handle_stopwatch_action(sw_action, det_lang or "en")
         yield from yield_fastpath_clauses(ans, det_lang or "en")
         return
 
-    # --- FAST-PATH 7: ALARM INTENT ---
+    # --- Alarm Commands ---
     al_action = parse_alarm_intent(user_query)
     if al_action == "set":
         alarm_res = parse_alarm_time(user_query)
@@ -5775,7 +5778,7 @@ def run_groq_llm(user_query: str, detected_lang: str | None = None) -> tuple[str
     return clean_speech, definitive_lang, full_raw, dt
 
 
-# --- PIPELINE: 3. TTS (Microsoft Ava for English | Gemini Aoede for Indic | Edge/Offline Fallback) ---
+# --- Step 3: Text to Speech ---
 MARATHI_DEV_WORDS = {
     'मला', 'तुला', 'आम्हाला', 'तुम्हाला', 'माझा', 'माझी', 'माझे', 'माझं', 'तुझा', 'तुझी', 'तुझे', 'तुझं',
     'आपण', 'तुम्ही', 'काय', 'काया', 'काई', 'कसा', 'कशी', 'कसे', 'कसं', 'कुठे', 'कुठं', 'कधी', 'कशाला', 'किती',
@@ -6449,7 +6452,7 @@ def run_tts(text_to_speak: str, user_query: str = '', raw_reply: str = '', force
     pcm, dt = run_offline_tts(spoken_text)
     return pcm, dt, "Offline Voice"
 
-# --- TIMER, STOPWATCH & ALARM MANAGEMENT ---
+# --- Timer & Alarm Loops ---
 _timer_seq = 0
 _alarm_seq = 0
 
@@ -6962,7 +6965,7 @@ async def alarm_supervisor():
             print(f"[ALARM SUPERVISOR ERROR]: {e}")
         await asyncio.sleep(0.5)
 
-# --- ESP32 AUDIO STREAMER (GAPLESS PIPELINED QUEUE STREAMER) ---
+# --- Audio Streamer to ESP32 ---
 async def stream_audio_queue_to_esp32(audio_queue: asyncio.Queue, label_text: str):
     """
     Streams 16kHz 16-bit Mono PCM audio chunks from an asynchronous queue to the ESP32
@@ -7154,7 +7157,7 @@ async def stream_audio_to_esp32(pcm_audio: bytes, label_text: str):
     await q.put(None)
     await stream_audio_queue_to_esp32(q, label_text)
 
-# --- SENTENCE-LEVEL STREAMING DIALOGUE PIPELINE ---
+# --- Streaming Dialogue Pipeline ---
 async def run_streaming_dialogue_pipeline(transcript: str, audio_queue: asyncio.Queue, t_stt: float, ambient_profile: dict | None = None, cadence_info: dict | None = None, t_speech_end: float | None = None):
     """
     Pipelined Sentence-Level Dialogue Synthesizer:
@@ -7178,7 +7181,7 @@ async def run_streaming_dialogue_pipeline(transcript: str, audio_queue: asyncio.
     voice_used = "en-IN-NeerjaNeural"
     total_audio_bytes = 0
     
-    # --- TURN-LEVEL VOICE PERSONA & TIER LOCK (PREVENTS MULTI-PERSON VOICE HOPPING) ---
+    # --- Voice Selection ---
     locked_turn_lang = None
     locked_turn_voice = None
     locked_turn_tier = None
@@ -7186,7 +7189,7 @@ async def run_streaming_dialogue_pipeline(transcript: str, audio_queue: asyncio.
     active_loop = loop if loop is not None else asyncio.get_running_loop()
     clause_queue = asyncio.Queue()
 
-    # --- DUAL SEQUENTIAL DELIVERY & SELF-COLLISION HANDLING ---
+    # --- Audio Queue Delivery ---
     global pending_priority_alerts
     active_alerts = list(pending_priority_alerts)
     pending_priority_alerts.clear()
@@ -7392,7 +7395,7 @@ async def run_streaming_dialogue_pipeline(transcript: str, audio_queue: asyncio.
     })
     return full_reply
 
-# --- FULL PIPELINE PROCESSOR (SYNCHRONOUS WRAPPER) ---
+# --- Full Pipeline Processor ---
 def process_voice_pipeline(raw_pcm: bytes):
     """Full synchronous execution: Groq Whisper -> Groq LLM -> Cartesia Sonic / MS Edge TTS."""
     print(f"\n[PIPELINE START]: Captured {len(raw_pcm)} bytes of raw audio.")
@@ -7457,7 +7460,7 @@ def process_voice_pipeline(raw_pcm: bytes):
 
 last_wake_start_time = 0.0
 
-# --- ESPHOME VOICE ASSISTANT EVENT HANDLERS ---
+# --- ESPHome Event Handlers ---
 async def handle_start(conversation_id: str, flags: int, settings: VoiceAssistantAudioSettings, wake_word_phrase: str | None) -> int | None:
     """Triggered automatically by ESP32 microWakeWord ('alexa') or Force Start button."""
     global audio_buffer, is_listening, speech_confirmed, speech_frames_count, silence_frames_count
@@ -7560,7 +7563,7 @@ async def handle_start(conversation_id: str, flags: int, settings: VoiceAssistan
                 if len(audio_buffer) < min_bytes:
                     continue
                     
-                # --- DUAL-STAGE ACOUSTIC & CADENCE VAD ENGINE ---
+                # --- Voice Activity Detection ---
                 # Solves latency without premature cutoff:
                 # 1. Clean Deep Silence (Sentence Completed): If trailing energy drops to deep room baseline (< 1.15x)
                 #    and user spoke a complete substantive phrase (>= 8 voiced frames), finish in only 10 frames (~320ms)!
@@ -7805,7 +7808,7 @@ async def handle_start(conversation_id: str, flags: int, settings: VoiceAssistan
             finally:
                 is_processing_request = False
 
-            # --- PREDICTIVE FOLLOW-UP ZERO-WAKE-WORD ACTIVE LISTENING DISPATCHER ---
+            # --- Follow-Up Dispatcher ---
             if (pending_followup_intent and 
                 active_followup_window["consecutive_turns"] < active_followup_window["max_chain_depth"] and
                 not playback_interrupt_event.is_set() and
@@ -7938,7 +7941,7 @@ async def handle_announcement_finished(ann: VoiceAssistantAnnounceFinished) -> N
     except Exception:
         pass
 
-# --- CONNECTION SUPERVISOR ---
+# --- Reconnection Loop ---
 async def on_esp_disconnect(expected: bool):
     """Callback triggered whenever ESP32 Native API connection drops."""
     global client
@@ -8034,7 +8037,7 @@ async def connection_supervisor():
             print(f"Supervisor reconnect error: {e}")
         await asyncio.sleep(2.0)
 
-# --- WEB DASHBOARD & REST API ---
+# --- Web Dashboard & API ---
 async def index(request):
     html = """<!DOCTYPE html>
 <html lang="en">
