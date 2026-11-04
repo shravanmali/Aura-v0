@@ -14,6 +14,13 @@ Aura handles full real-time conversations right from my desk:
 - Supports barge-in: interrupts speech playback the moment you speak over it.
 - Stores desk notes, kitchen timers, and conversational facts locally.
 
+## Bench Demos
+
+Short clips of the hardware running on my desk:
+- [Voice latency & crypto/weather check](https://youtube.com/shorts/PmZ0z8Imm-w) — testing wake word trigger and response speed.
+- [VoIP landline call test ("Alexa, call myself")](https://youtube.com/shorts/HGMN75dKRuE) — placing an actual call via JioFiber SIP through the ESP32 mic and speaker.
+- [Memory recall test](https://youtu.be/rkv8eTRfRxI) — testing persistent facts and recall over voice.
+
 ## Working Features Tested on My Bench
 
 - On-device wake word detection running on ESP32-S3 via ESPHome `micro_wake_word`
@@ -57,3 +64,89 @@ Everything is currently wired on a breadboard on my desk (see [`BOM.csv`](BOM.cs
 | | DIN | GPIO 4 | RMT control pin |
 
 > **Wiring tip from my desk testing:** Keep the mic wires away from the speaker wires. Early on I had electrical hum because the microphone lines were running directly next to the 5V speaker power wire. Putting them on opposite sides of the breadboard fixed the noise!
+
+## LED Ring Colors
+
+| State | LED Color | Meaning |
+| :--- | :--- | :--- |
+| Idle | Off | Waiting for wake word |
+| Listening | Bright Cyan | Wake word detected, listening to you |
+| Thinking | Blue Scan | Groq processing speech and generating reply |
+| Speaking | Purple Pulse | Audio playing through the 3W speaker |
+| Call Ringing | Amber Scan | Calling phone number via SIP |
+| In Call | Green Solid | Phone call active |
+
+## How to Set Up and Run
+
+### 1. Set Up Python Environment
+You need Python 3.10 or newer:
+
+```bash
+# Clone the repository
+git clone https://github.com/shravanmali/Aura-v0.git
+cd Aura-v0
+
+# Create and activate virtual environment
+python -m venv venv
+# On Windows Powershell:
+.\venv\Scripts\Activate.ps1
+# On Linux/macOS:
+source venv/bin/activate
+
+# Install required packages
+pip install aioesphomeapi aiohttp requests numpy soundfile edge-tts pyttsx3 flask
+```
+
+### 2. Configure Credentials
+Copy the example files and fill in your details:
+
+```bash
+# Wi-Fi credentials for the ESP32
+cp secrets.example.yaml secrets.yaml
+
+# API keys for Groq and Cartesia
+cp local_secrets.example.py local_secrets.py
+
+# Optional: VoIP contacts and SIP setup
+cp calling_test/contacts.example.json calling_test/contacts.json
+cp calling_test/jio_config.example.json calling_test/jio_config.json
+```
+
+### 3. Flash the ESP32-S3
+Connect your ESP32-S3 board with a USB-C cable:
+
+```bash
+# Flash via USB (change COM3 to your port)
+esphome run voice_assistant.yaml --device COM3
+```
+
+Once flashed, the ESP32 connects to your Wi-Fi router. Future updates can be flashed wirelessly over the air (OTA).
+
+### 4. Start the Voice Server
+With your virtual environment active, run:
+
+```bash
+python voice_server.py
+```
+
+The server connects to the ESP32 at `192.168.31.200:6053` and opens a local web interface at `http://localhost:8080`. Say **"Alexa"** near the microphone and speak your question!
+
+### 5. Optional: Run the VoIP Calling Bridge
+If you want to test phone calls through your home broadband SIP line:
+1. Download and install [MicroSIP](https://www.microsip.org/).
+2. Run the calling bridge:
+   ```bash
+   cd calling_test
+   python app.py
+   ```
+3. Open `http://localhost:5050` in your browser to test dialing numbers.
+
+## Problems I Ran Into & Fixes
+
+- **50Hz power line hum:** The INMP441 picked up noise from the breadboard power rail. I routed a clean 3.3V supply away from the 5V speaker line and added an 85Hz high-pass filter in Python to cut low-frequency rumble.
+- **ESP32 watchdog reboots:** Sharing one I2S clock line between input and output crashed the ESP32 watchdog during heavy Wi-Fi playback. Splitting them into two independent I2S buses (`i2s_in` on GPIO 15/16/17 and `i2s_out` on GPIO 5/6/7) eliminated the crashes.
+- **3-4s latency:** Running local models on my laptop was too slow. Switching to Groq Whisper Turbo for STT and streaming neural TTS dropped the loop to under 800ms.
+
+## License
+
+MIT License. Built by Shravan Mali with lots of late-night soldering and testing.
