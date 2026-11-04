@@ -63,3 +63,117 @@ Everything is currently wired on a breadboard on my desk (see [`BOM.csv`](BOM.cs
 
 ## Wiring & Pinout
 
+| Component | Pin Label | ESP32-S3 GPIO | Notes |
+| :--- | :--- | :--- | :--- |
+| **INMP441 Mic** | VDD | 3.3V | Logic power |
+| | GND | GND | Ground |
+| | SD | GPIO 17 | I2S Data In |
+| | WS / LRCLK | GPIO 15 | Word Select clock |
+| | SCK / BCLK | GPIO 16 | Bit Clock |
+| | L/R | GND | Set to Left channel |
+| **MAX98357A Amp** | VIN | 5V | Power for 3W output |
+| | GND | GND | Ground |
+| | DIN | GPIO 7 | I2S Data Out |
+| | LRC / LRCLK | GPIO 6 | Word Select clock |
+| | BCLK | GPIO 5 | Bit Clock |
+| | GAIN | GND | 9dB gain setting |
+| | SD_MODE | Not connected | Auto mono mix |
+| **WS2812 LED Ring**| 5V / VDD | 5V | Power |
+| | GND | GND | Ground |
+| | DIN | GPIO 4 | RMT control pin |
+
+> **Wiring tip from my desk testing:** Keep the mic wires away from the speaker wires. Early on I had electrical hum because the microphone lines were running directly next to the 5V speaker power wire. Putting them on opposite sides of the breadboard fixed the noise!
+
+---
+
+## LED Ring Colors
+
+| State | LED Color | Meaning |
+| :--- | :--- | :--- |
+| **Idle** | Off | Waiting for wake word |
+| **Listening** | Bright Cyan | Wake word detected, listening to you |
+| **Thinking** | Blue Scan | Groq processing speech and generating reply |
+| **Speaking** | Purple Pulse | Audio playing through the 3W speaker |
+| **Call Ringing**| Amber Scan | Calling phone number via SIP |
+| **In Call** | Green Solid | Phone call active |
+
+---
+
+## How to Set Up and Run
+
+### 1. Set Up Python Environment
+You need Python 3.10 or newer:
+
+```bash
+# Clone the repository
+git clone https://github.com/shravanmali/aura-esp32-voice-assistant.git
+cd aura-esp32-voice-assistant
+
+# Create and activate virtual environment
+python -m venv venv
+# On Windows Powershell:
+.\venv\Scripts\Activate.ps1
+# On Linux/macOS:
+source venv/bin/activate
+
+# Install required packages
+pip install aioesphomeapi aiohttp requests numpy soundfile edge-tts pyttsx3 flask
+```
+
+### 2. Configure Credentials
+Copy the example files and fill in your details:
+
+```bash
+# Wi-Fi credentials for the ESP32
+cp secrets.example.yaml secrets.yaml
+
+# API keys for Groq and Cartesia
+cp local_secrets.example.py local_secrets.py
+
+# Optional: VoIP contacts and SIP setup
+cp calling_test/contacts.example.json calling_test/contacts.json
+cp calling_test/jio_config.example.json calling_test/jio_config.json
+```
+
+### 3. Flash the ESP32-S3
+Connect your ESP32-S3 board with a USB-C cable:
+
+```bash
+# Flash via USB (change COM3 to your port)
+esphome run voice_assistant.yaml --device COM3
+```
+
+Once flashed, the ESP32 connects to your Wi-Fi router. Future updates can be flashed wirelessly over the air (OTA).
+
+### 4. Start the Voice Server
+With your virtual environment active, run:
+
+```bash
+python voice_server.py
+```
+
+The server connects to the ESP32 at `192.168.31.200:6053` and opens a local web interface at `http://localhost:8080`. Say **"Alexa"** near the microphone and speak your question!
+
+### 5. Optional: Run the VoIP Calling Bridge
+If you want to test phone calls through your home broadband SIP line:
+1. Download and install [MicroSIP](https://www.microsip.org/).
+2. Run the calling bridge:
+   ```bash
+   cd calling_test
+   python app.py
+   ```
+3. Open `http://localhost:5050` in your browser to test dialing numbers.
+
+---
+
+## Problems I Faced and How I Fixed Them
+
+1. **50Hz Hum and Mic Buzzing:** The INMP441 was picking up electrical hum from the breadboard power rail. I added a software high-pass filter at 85Hz in Python and physically separated the microphone wires from the 5V speaker line.
+2. **Watchdog Crashes on the ESP32:** Initially, both the mic and DAC shared the same I2S clock lines. When Wi-Fi packets slowed down during audio playback, the ESP32 would trigger a FreeRTOS watchdog reset. I solved this by splitting them into two completely separate I2S buses: `i2s_in` (GPIO 15, 16, 17) and `i2s_out` (GPIO 5, 6, 7).
+3. **Response Delays:** Standard local models took 3-4 seconds to respond. Offloading to Groq Whisper and streaming neural TTS cut total response time to under a second.
+
+---
+
+## License
+
+MIT License. Built by Shravan Mali with lots of late-night soldering and testing.
